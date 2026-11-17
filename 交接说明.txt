@@ -358,3 +358,74 @@ benchmark：
 4. Tab 百分比流程在用户屏幕阅读器环境中是否完全符合预期。
 
 自动验证、底层 ISpAudio 状态验证和退出修复验证均已完成；以上四项需要用户亲耳和实际键盘操作确认。
+
+============================================================
+十四、GitHub 公开源码备份（2026-11-17）
+============================================================
+
+GitHub 仓库：
+  https://github.com/y521wan-coder/Bookworm
+
+可见性：公开（任何人均可查看源码）
+仓库类型：从 blindpandas/bookworm 建立的公开 Fork，用于保留完整上游历史
+默认分支：main
+
+Git 远端：
+  origin = git@github.com:y521wan-coder/Bookworm.git
+  upstream = https://github.com/blindpandas/bookworm.git
+
+上游基线核对：
+1. Original_Source\bookworm-2026.2-original.zip 已与上游正式标签 2026.2 逐文件核对 Git Blob 哈希。
+2. 压缩包和标签各包含 818 个文件，差异为 0。
+3. 上游 2026.2 标签目标提交：
+     ebc4763282850c35475ac40bed13cb8308266aa5
+
+Bookworm 2026.2.6 正式源码提交：
+  807668aa5d96ac3b63ae8ca562a4afc3128095ac
+
+正式版本注释标签：
+  v2026.2.6 -> 807668aa5d96ac3b63ae8ca562a4afc3128095ac
+
+标签对象：
+  62105fb5f9d78c15024cd9108a7a3d0cb60acf68
+
+交接说明更新前，本地和远端 main HEAD：
+  bab532413231b3cbfc952190e85f626ba2d6ae39
+
+当时 main 可达提交数量：1353
+本节提交后 main 可达提交数量：1354
+被 Git 跟踪的文件数量：825
+
+仓库专用上传密钥（不要输出或复制私钥内容）：
+  私钥：D:\Bookworm_Development_Project\private\github\bookworm_github_ed25519
+  公钥：D:\Bookworm_Development_Project\private\github\bookworm_github_ed25519.pub
+  SSH 配置：D:\Bookworm_Development_Project\private\github\bookworm_ssh_config
+  GitHub 主机密钥文件：D:\Bookworm_Development_Project\private\github\github_known_hosts
+
+Deploy Key 名称：Bookworm repository deploy key
+权限：只属于本仓库，已开启写入权限
+密钥指纹：
+  SHA256:xF3pZcg+cYcMQaksPsT6IsHhVRfLiyt87eoAjqlaTdY
+
+GitHub 官方 ED25519 主机密钥指纹：
+  SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
+
+安全检查：
+1. 使用官方 Gitleaks 8.30.1 扫描正式源码树 f6aceb55958353e039c54e3814d69c0bb7b91f72，共扫描 28,008,738 字节，发现 0 个凭证泄漏。
+2. GitHub Secret Scanning 已扫描远端完整历史：开放结果 0、已关闭结果 0，未发现密钥。
+3. 由于本地仓库采用部分克隆且网络下载历史对象较慢，本地 Gitleaks 全历史扫描没有完成；远端完整历史由 GitHub 服务器端 Secret Scanning 完成复核。
+4. 已检查远端 main，未发现 private、.env、PEM、SSH 私钥、Bookworm 安装包、日志、数据库、用户配置、测试书或语音库。
+5. private 目录和仓库专用密钥均被 .gitignore 排除，未被 Git 跟踪或上传。
+
+Git 排除范围：
+  Build_Tools、Config、Latest_Installer、Logs、Original_Source、Test_Data、Voice_Library、private，
+  以及 Source 中的 .venv、应用数据、缓存、build、dist、日志、生成目录和 Bookworm 构建产物。
+
+上游源码原本跟踪的必要构建/运行依赖继续保留，包括 packages 中的 ZIP、WHL、DLL，
+以及 antiword.exe、bootstrap.exe 等辅助程序；这些不是 Bookworm 安装包、用户数据或本次生成的构建产物。
+
+临时扫描工具、扫描报告、临时克隆、辅助脚本和中断下载产生的临时对象均已清理。
+创建 Fork 前使用的空占位仓库 Bookworm-upload-placeholder 已删除。
+
+本次仅完成 Git/GitHub 源码备份和文档更新，没有修改软件功能，也没有重新构建、安装或运行测试。
+以后从本目录推送时继续使用 origin 和本项目专用 SSH 配置，不要复用其他项目的上传密钥。
