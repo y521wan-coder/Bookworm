@@ -3,14 +3,12 @@
 
 from __future__ import annotations
 
-import bisect
 import math
 import operator
 from collections.abc import Container
 from functools import cached_property, partial
 
 import attr
-from more_itertools import locate
 from pytqsm import segment as segment_sentences
 
 from bookworm import typehints as t
@@ -349,19 +347,36 @@ class TextInfo:
 
     @cached_property
     def paragraphs(self):
-        rv = []
-        paragraphs = self.text.splitlines(keepends=True)
-        newline = "\n"
-        p_locations = list(locate(self.text, lambda c: c == newline))
-        start_locations = [0] + [l + 1 for l in p_locations[:-1]]
-        for (start_pos, stop_pos), parag in zip(zip(start_locations, p_locations), paragraphs):
-            if not parag.strip():
-                continue
-            p_start_pos = self.start_pos + start_pos
-            p_stop_pos = self.start_pos + stop_pos
-            p_range = TextRange(start=p_start_pos, stop=p_stop_pos)
-            rv.append((parag, p_range))
-        return rv
+        # Keep the public list-valued property for backwards compatibility.
+        # Performance-sensitive callers should use iter_paragraphs() so a large
+        # document is not copied into several temporary lists at once.
+        return list(self.iter_paragraphs())
+
+    def iter_paragraphs(self):
+        """Yield non-empty paragraphs without materializing the whole document.
+
+        The old implementation used splitlines(), locate(), two position lists,
+        and a final paragraph list.  A multi-megabyte book could therefore use
+        several times its text size and block the UI before speech even began.
+        Bookworm normalizes displayed document line endings to ``\n``; scanning
+        one boundary at a time also lets speech start after the first paragraph.
+        """
+        local_start = 0
+        text_length = len(self.text)
+        while local_start < text_length:
+            newline_pos = self.text.find("\n", local_start)
+            if newline_pos < 0:
+                newline_pos = text_length
+            paragraph = self.text[local_start:newline_pos]
+            if paragraph.strip():
+                yield (
+                    paragraph,
+                    TextRange(
+                        start=self.start_pos + local_start,
+                        stop=self.start_pos + newline_pos,
+                    ),
+                )
+            local_start = newline_pos + 1
 
     def _record_markers(self, segments):
         rv = []
@@ -374,23 +389,50 @@ class TextInfo:
         return self.paragraph_markers
 
     def get_paragraph_to_the_right_of(self, pos):
-        marker_map = {item.start: item for item in self.configured_markers}
-        markers = list(marker_map)
-        markers.sort()
-        index = bisect.bisect_right(markers, pos)
-        if index < len(markers):
-            return marker_map[markers[index]]
+        # Paragraph seeking is an interactive operation.  Find only the nearby
+        # boundary instead of building and sorting markers for the entire book.
+        local_pos = pos - self.start_pos
+        if local_pos < 0:
+            candidate_start = 0
+        else:
+            newline_pos = self.text.find("\n", min(local_pos, len(self.text)))
+            candidate_start = newline_pos + 1 if newline_pos >= 0 else len(self.text)
+        text_length = len(self.text)
+        while candidate_start < text_length:
+            stop = self.text.find("\n", candidate_start)
+            if stop < 0:
+                stop = text_length
+            if self.text[candidate_start:stop].strip():
+                return TextRange(
+                    self.start_pos + candidate_start,
+                    self.start_pos + stop,
+                )
+            candidate_start = stop + 1
         raise LookupError(f"Could not find a paragraph located at the right of position {pos}")
 
     def get_paragraph_to_the_left_of(self, pos):
-        marker_map = {item.start: item for item in self.configured_markers}
-        markers = list(marker_map)
-        markers.sort()
-        if not markers:
+        local_pos = min(max(pos - self.start_pos, 0), len(self.text))
+        if local_pos <= 0:
             raise LookupError(f"Could not find a paragraph located at the left of position {pos}")
-        index = bisect.bisect_left(markers, pos)
-        if index == 0:
-            raise LookupError(f"Could not find a paragraph located at the left of position {pos}")
-        if index > 0:
-            return marker_map[markers[index - 1]]
+
+        # At a paragraph start, "left" means the preceding paragraph.  When
+        # inside a paragraph, it means the paragraph containing the position.
+        candidate_start = self.text.rfind("\n", 0, local_pos) + 1
+        if candidate_start == local_pos:
+            previous_newline = self.text.rfind("\n", 0, max(0, candidate_start - 1))
+            candidate_start = previous_newline + 1
+
+        while candidate_start >= 0:
+            stop = self.text.find("\n", candidate_start)
+            if stop < 0:
+                stop = len(self.text)
+            if candidate_start < local_pos and self.text[candidate_start:stop].strip():
+                return TextRange(
+                    self.start_pos + candidate_start,
+                    self.start_pos + stop,
+                )
+            if candidate_start == 0:
+                break
+            previous_newline = self.text.rfind("\n", 0, max(0, candidate_start - 1))
+            candidate_start = previous_newline + 1
         raise LookupError(f"Could not find a paragraph located at the left of position {pos}")

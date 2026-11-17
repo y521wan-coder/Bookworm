@@ -38,7 +38,6 @@ class StatefulSpeechMenuIds(IntEnum):
 
 SPEECH_KEYBOARD_SHORTCUTS = {
     StatefulSpeechMenuIds.play: "F5",
-    StatefulSpeechMenuIds.pauseToggle: "F6",
     StatefulSpeechMenuIds.stop: "F7",
     StatelessSpeechMenuIds.voiceProfiles: "Ctrl-Shift-V",
 }
@@ -579,7 +578,7 @@ class SpeechMenu(wx.Menu):
         self.Append(
             StatefulSpeechMenuIds.pauseToggle,
             # Translators: the label of an item in the application menubar
-            _("Pa&use/Resume\tF6"),
+            _("Pa&use/Resume\tCtrl+Win+Alt+F6"),
             # Translators: the help text of an item in the application menubar
             _("Pause/Resume reading aloud"),
         )

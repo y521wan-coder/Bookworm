@@ -201,6 +201,42 @@ def test_single_page_section_boundary_stops_current_section_reading(monkeypatch)
     service.stop_speech.assert_called_once_with(user_requested=True)
 
 
+def test_large_document_speech_queue_is_bounded(monkeypatch):
+    root = Section(title="Document", pager=Pager(0, 0), text_range=TextRange(0, 20_000_000))
+
+    class Document:
+        @staticmethod
+        def is_single_page_document():
+            return True
+
+        @staticmethod
+        def get_section_at_position(_position):
+            return root
+
+    service = object.__new__(tts.TextToSpeechService)
+    service._speech_session = 1
+    service.utterance_queue = deque()
+    service.reader = SimpleNamespace(document=Document())
+    service.config_manager = {
+        "sentence_pause": 0,
+        "paragraph_pause": 0,
+        "end_of_section_pause": 0,
+    }
+    monkeypatch.setattr(
+        tts.config,
+        "conf",
+        {"reading": {"notify_on_section_end": False, "reading_mode": 0}},
+    )
+    text_info = TextInfo("paragraph\n" * 1_000_000)
+    service._pending_utterances = service._iter_text_utterances(text_info)
+
+    service._fill_utterance_queue()
+
+    assert len(service.utterance_queue) == 2
+    assert service._pending_utterances is not None
+    assert "paragraphs" not in text_info.__dict__
+
+
 @pytest.mark.parametrize(
     ("forward", "start_page", "state", "expected_position", "pause_on_start"),
     [
@@ -298,6 +334,61 @@ def test_pending_async_speech_can_be_paused_resumed_and_stopped(monkeypatch):
 
     service.speak_page.assert_not_called()
     service.stop_speech.assert_called_once_with(user_requested=True)
+
+
+def test_global_pause_uses_native_windows_hotkey():
+    service = object.__new__(tts.TextToSpeechService)
+    service.view = Mock()
+    service.view.RegisterHotKey.return_value = True
+    service._global_pause_hotkey_registered = False
+    service.pause_or_resume = Mock()
+
+    service.start_global_pause_hotkey()
+
+    service.view.RegisterHotKey.assert_called_once_with(
+        tts.GLOBAL_PAUSE_HOTKEY_ID,
+        tts.GLOBAL_PAUSE_HOTKEY_MODIFIERS,
+        tts.wx.WXK_F6,
+    )
+    assert service._global_pause_hotkey_registered
+    service.on_global_pause_hotkey(None)
+
+    service.pause_or_resume.assert_called_once_with()
+    service.stop_global_pause_hotkey()
+    service.view.UnregisterHotKey.assert_called_once_with(tts.GLOBAL_PAUSE_HOTKEY_ID)
+    assert not service._global_pause_hotkey_registered
+
+
+def test_global_pause_shutdown_tolerates_destroyed_window():
+    service = object.__new__(tts.TextToSpeechService)
+    service.view = Mock()
+    service.view.Unbind.side_effect = RuntimeError("window has been deleted")
+    service._global_pause_hotkey_registered = True
+
+    service.stop_global_pause_hotkey()
+
+    assert not service._global_pause_hotkey_registered
+    service.view.UnregisterHotKey.assert_not_called()
+
+
+def test_confirmed_slider_position_starts_reading_when_stopped(monkeypatch):
+    service = object.__new__(tts.TextToSpeechService)
+    service.engine = None
+    service._requested_play = False
+    service._pause_on_speech_start = False
+    service.play_or_resume = Mock()
+    restart = Mock()
+    monkeypatch.setattr(tts.restart_speech, "send", restart)
+
+    service.on_reading_position_change(
+        object(),
+        42,
+        tts_speech_prefix="Reading progress: 50%",
+        start_reading=True,
+    )
+
+    restart.assert_not_called()
+    service.play_or_resume.assert_called_once_with()
 
 
 def test_restart_uses_requested_position_while_async_speech_is_pending():

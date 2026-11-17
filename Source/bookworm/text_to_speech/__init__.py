@@ -47,6 +47,9 @@ from .tts_gui import (
 )
 
 log = logger.getChild(__name__)
+GLOBAL_PAUSE_HOTKEY_ID = int(wx.NewIdRef())
+# MOD_NOREPEAT (0x4000) prevents a held F6 key from rapidly toggling state.
+GLOBAL_PAUSE_HOTKEY_MODIFIERS = wx.MOD_CONTROL | wx.MOD_ALT | wx.MOD_WIN | 0x4000
 
 # Custom signals
 restart_speech = _signals.signal("tts/restart-speech")
@@ -78,9 +81,10 @@ class TextToSpeechService(BookwormService):
         self.config_manager = TTSConfigManager()
         self.textCtrl = self.view.contentTextCtrl
         self.engine = None
-        # Holds the pynput listener instance for global media key control.
-        # It runs in a separate thread.
+        # Media keys use pynput. The pause/resume chord is registered directly
+        # with Windows through wx.RegisterHotKey for reliable Win-key handling.
         self.pynput_listener = None
+        self._global_pause_hotkey_registered = False
         self.pynput_key_map = {
             keyboard.Key.media_play_pause: self.pause_or_resume,
             keyboard.Key.media_next: self.fastforward,
@@ -106,6 +110,7 @@ class TextToSpeechService(BookwormService):
         self._speech_session = getattr(self, "_speech_session", 0) + 1
         self._pause_on_speech_start = False
         self.utterance_queue = deque()
+        self._pending_utterances = None
         self.text_info = None
         self._whole_page_text_info = None
         self.clear_highlighted_ranges()
@@ -120,6 +125,7 @@ class TextToSpeechService(BookwormService):
         self._update_listener_state()
 
     def shutdown(self):
+        self.stop_global_pause_hotkey()
         self.stop_global_listener()
         with suppress(RuntimeError):
             self.close()
@@ -130,18 +136,62 @@ class TextToSpeechService(BookwormService):
             self._update_listener_state()
 
     def _update_listener_state(self):
-        enable = config.conf["reading"]["enable_global_media_keys"]
-        if enable and self.pynput_listener is None:
+        self.start_global_pause_hotkey()
+        enable_media_keys = config.conf["reading"]["enable_global_media_keys"]
+        if enable_media_keys and self.pynput_listener is None:
             self.start_global_listener()
-        elif not enable and self.pynput_listener is not None:
+        elif not enable_media_keys and self.pynput_listener is not None:
             self.stop_global_listener()
+
+    def start_global_pause_hotkey(self):
+        if self._global_pause_hotkey_registered:
+            return
+        try:
+            registered = self.view.RegisterHotKey(
+                GLOBAL_PAUSE_HOTKEY_ID,
+                GLOBAL_PAUSE_HOTKEY_MODIFIERS,
+                wx.WXK_F6,
+            )
+        except Exception:
+            log.exception("Failed to register Ctrl+Win+Alt+F6 global pause hotkey.")
+            return
+        if not registered:
+            log.error("Windows rejected Ctrl+Win+Alt+F6 global pause hotkey registration.")
+            return
+        self.view.Bind(
+            wx.EVT_HOTKEY,
+            self.on_global_pause_hotkey,
+            id=GLOBAL_PAUSE_HOTKEY_ID,
+        )
+        self._global_pause_hotkey_registered = True
+        log.info("Registered global pause hotkey: Ctrl+Win+Alt+F6.")
+
+    def stop_global_pause_hotkey(self):
+        if not self._global_pause_hotkey_registered:
+            return
+        try:
+            self.view.Unbind(
+                wx.EVT_HOTKEY,
+                handler=self.on_global_pause_hotkey,
+                id=GLOBAL_PAUSE_HOTKEY_ID,
+            )
+            self.view.UnregisterHotKey(GLOBAL_PAUSE_HOTKEY_ID)
+        except RuntimeError:
+            # The frame may already have been destroyed by wx before service
+            # shutdown. Windows releases hotkeys owned by a destroyed window.
+            log.debug("Book viewer was already destroyed while removing hotkey.")
+        finally:
+            self._global_pause_hotkey_registered = False
+
+    def on_global_pause_hotkey(self, event):
+        self.pause_or_resume()
 
     def start_global_listener(self):
         if self.pynput_listener is None:
             try:
                 log.info("Attempting to start global media key listener.")
                 self.pynput_listener = keyboard.Listener(
-                    on_press=self.on_key_press_global
+                    on_press=self.on_key_press_global,
                 )
                 self.pynput_listener.start()
             except Exception:
@@ -463,18 +513,28 @@ class TextToSpeechService(BookwormService):
         if start_pos == 0:
             with self.queue_speech_utterance() as utterance:
                 self.configure_start_page_utterance(utterance, page)
-        self.add_text_utterances(text_info)
-        with self.queue_speech_utterance() as utterance:
-            self.configure_end_page_utterance(utterance, page)
-        utterance.add_pause(PauseSpec.extra_small)
+        self._pending_utterances = self._iter_page_utterances(text_info, page)
+        self._fill_utterance_queue()
         self.engine.speak(self.utterance_queue.pop())
 
     def add_text_utterances(self, text_info):
+        """Queue every paragraph (kept for compatibility with existing callers)."""
+        for _ in self._iter_text_utterances(text_info):
+            pass
+
+    def _iter_page_utterances(self, text_info, page):
+        yield from self._iter_text_utterances(text_info)
+        with self.queue_speech_utterance() as utterance:
+            self.configure_end_page_utterance(utterance, page)
+            utterance.add_pause(PauseSpec.extra_small)
+        yield None
+
+    def _iter_text_utterances(self, text_info):
         is_single_page_document = self.reader.document.is_single_page_document()
         _last_known_section = None
         parag_pause = self.config_manager["paragraph_pause"]
         sent_pause = self.config_manager["sentence_pause"]
-        for paragraph, text_range in text_info.paragraphs:
+        for paragraph, text_range in text_info.iter_paragraphs():
             with self.queue_speech_utterance() as utterance:
                 if is_single_page_document:
                     text_pos = sum(text_range.astuple()) / 2
@@ -511,6 +571,17 @@ class TextToSpeechService(BookwormService):
                         }
                     )
                 )
+            # Advancing this iterator queues exactly one utterance.  The speech
+            # engine asks for more as playback proceeds, keeping queue memory
+            # bounded even for very large documents.
+            yield None
+
+    def _fill_utterance_queue(self, target_size=2):
+        while self._pending_utterances is not None and len(self.utterance_queue) < target_size:
+            try:
+                next(self._pending_utterances)
+            except StopIteration:
+                self._pending_utterances = None
 
     @gui_thread_safe
     def process_bookmark(self, bookmark):
@@ -518,6 +589,7 @@ class TextToSpeechService(BookwormService):
             return
         bookmark_type = bookmark["t"]
         if bookmark_type == UT_END:
+            self._fill_utterance_queue()
             try:
                 next_utterance = self.utterance_queue.pop()
                 self.engine.speak(next_utterance)
@@ -714,10 +786,18 @@ class TextToSpeechService(BookwormService):
         return self.engine is not None
 
     def on_reading_position_change(self, sender, position, **kwargs):
+        was_requested = getattr(self, "_requested_play", False)
         if (tts_speech_prefix := kwargs.get("tts_speech_prefix")) is not None:
-            restart_speech.send(
-                sender, start_speech_from=position, speech_prefix=tts_speech_prefix
-            )
+            if was_requested:
+                restart_speech.send(
+                    sender, start_speech_from=position, speech_prefix=tts_speech_prefix
+                )
+        if kwargs.get("start_reading") and (
+            not was_requested
+            or getattr(self, "_pause_on_speech_start", False)
+            or (self.is_engine_ready and self.engine.state is SynthState.paused)
+        ):
+            self.play_or_resume()
 
     def on_state_changed(self, sender, state):
         speech_engine_state_changed.send(self.view, service=self, state=state)

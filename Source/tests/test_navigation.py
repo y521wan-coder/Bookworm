@@ -43,6 +43,11 @@ class SetContentHarness(PositionMappingHarness):
         return self.content_style
 
 
+class SliderNavigationHarness:
+    onSliderValueChanged = BookViewerWindow.onSliderValueChanged
+    onSliderKeyDown = BookViewerWindow.onSliderKeyDown
+
+
 class TocFocusHarness:
     def __init__(self, insertion_point, reader):
         self.insertion_point = insertion_point
@@ -217,7 +222,7 @@ def test_position_mapping_handles_non_bmp_rich_edit_offsets():
     assert position_map.to_text_ctrl_value() == f"\n{text}\n\n\n\n"
 
 
-def test_line_lookup_maps_non_bmp_text_positions_to_native_control_positions():
+def test_line_lookup_uses_clean_text_without_querying_native_control():
     text = "exercise with \U0001d445\U0001d446\U0001d447 before heading\nHeading\nbody"
     heading_start = text.index("Heading")
     non_bmp_before_heading = 3
@@ -233,7 +238,44 @@ def test_line_lookup_maps_non_bmp_text_positions_to_native_control_positions():
         heading_start,
         heading_start + len("Heading"),
     )
-    assert viewer.contentTextCtrl.position_queries == [control_heading_start]
+    # Native RichEdit line lookup lays out all preceding text and is extremely
+    # slow for multi-megabyte documents.  Clean-text lookup avoids that work.
+    assert viewer.contentTextCtrl.position_queries == []
+
+
+@pytest.mark.parametrize("confirm_key", [book_viewer.wx.WXK_TAB, book_viewer.wx.WXK_RETURN])
+def test_slider_navigation_waits_for_enter_after_repeated_events(confirm_key):
+    class Timer:
+        stopped = False
+
+        def Stop(self):
+            self.stopped = True
+
+    previous_timer = Timer()
+    scheduled = []
+    viewer = SliderNavigationHarness()
+    viewer._progress_navigation_timer = previous_timer
+    viewer._pending_slider_percentage = None
+    viewer.readingProgressSlider = SimpleNamespace(GetValue=lambda: 0)
+    viewer._schedule_slider_navigation = lambda percentage, **kwargs: scheduled.append(
+        (percentage, kwargs)
+    )
+
+    for percentage in range(60, 74):
+        viewer.onSliderValueChanged(SimpleNamespace(GetInt=lambda p=percentage: p))
+
+    assert viewer._pending_slider_percentage == 73
+    assert scheduled == []
+    assert not previous_timer.stopped
+
+    enter_event = SimpleNamespace(
+        GetKeyCode=lambda: confirm_key,
+        Skip=lambda: (_ for _ in ()).throw(AssertionError("Enter must be consumed")),
+    )
+    viewer.onSliderKeyDown(enter_event)
+
+    assert previous_timer.stopped
+    assert scheduled == [(73, {"delay": 1, "start_reading": True})]
 
 
 def test_get_line_number_uses_raw_caret_when_position_is_omitted():

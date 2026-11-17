@@ -4,7 +4,6 @@
 import locale
 import weakref
 import winreg
-from collections import OrderedDict
 from enum import IntEnum
 
 import comtypes.client
@@ -15,10 +14,11 @@ from bookworm import typehints as t
 from bookworm.i18n import LocaleInfo
 from bookworm.logger import logger
 from bookworm.speechdriver.engine import BaseSpeechEngine, VoiceInfo
+from bookworm.speechdriver.element.enums import SpeechElementKind
 from bookworm.speechdriver.enumerations import EngineEvent, SynthState
 from bookworm.speechdriver.utterance import SpeechStyle, SpeechUtterance
 
-from ..utils import process_audio_bookmark
+from ..utils import AUDIO_BOOKMARK_PREFIX, process_audio_bookmark
 from .element_converter import sapi_speech_converter
 
 log = logger.getChild(__name__)
@@ -69,7 +69,9 @@ class SapiEventSink(object):
                 "Called StartStream method on SapiSink while the synthesizer is dead"
             )
         else:
-            synth._set_state(SynthState.busy)
+            synth._stream_received_bookmarks.clear()
+            if synth.state is not SynthState.paused:
+                synth._set_state(SynthState.busy)
 
     def Bookmark(self, streamNum, pos, bookmark, bookmarkId):
         if (synth := self.synthref()) is None:
@@ -77,6 +79,7 @@ class SapiEventSink(object):
                 "Called Bookmark method on SapiSink while the synthesizer is dead"
             )
             return
+        synth._stream_received_bookmarks.add(bookmark)
         if not process_audio_bookmark(bookmark):
             for handler in synth.event_handlers.get(EngineEvent.bookmark_reached, ()):
                 handler(synth, bookmark)
@@ -87,7 +90,9 @@ class SapiEventSink(object):
                 "Called stream end method on EndStream while the synthesizer is dead"
             )
         else:
-            synth._set_state(SynthState.ready)
+            if synth.state is not SynthState.paused:
+                synth._set_state(SynthState.ready)
+            synth._recover_missing_bookmarks()
 
 
 class SapiSpeechEngine(BaseSpeechEngine):
@@ -110,12 +115,17 @@ class SapiSpeechEngine(BaseSpeechEngine):
         self.__state = SynthState.ready
         self.event_handlers = {}
         self._voice_token = None
+        self._current_utterance = None
+        self._stream_received_bookmarks = set()
+        self._bookmark_fallback_reported = False
         self.__pitch = 50
         self._init_tts()
 
     def close(self):
         self._events_connection = None
         self._tts = None
+        self._current_utterance = None
+        self._stream_received_bookmarks.clear()
         super().close()
 
     def get_voices(self):
@@ -195,17 +205,51 @@ class SapiSpeechEngine(BaseSpeechEngine):
         return voice_utterance
 
     def speak_utterance(self, utterance):
+        self._current_utterance = utterance
         sapi_xml = sapi_speech_converter.convert(utterance, localeinfo=None)
         flags = SpeechVoiceSpeakFlags.IsXML | SpeechVoiceSpeakFlags.Async
         self.tts.Speak(sapi_xml, flags)
+        if self.state is not SynthState.paused:
+            self._set_state(SynthState.busy)
 
     def stop(self):
         if self.state is SynthState.paused:
             self.resume()
+        self._current_utterance = None
+        self._stream_received_bookmarks.clear()
         self.tts.Speak(
             "", SpeechVoiceSpeakFlags.Async | SpeechVoiceSpeakFlags.PurgeBeforeSpeak
         )
         self._set_state(SynthState.ready)
+
+    def _recover_missing_bookmarks(self):
+        utterance = self._current_utterance
+        self._current_utterance = None
+        if utterance is None:
+            return
+
+        missing_bookmarks = []
+        for element in utterance:
+            if element.kind is not SpeechElementKind.bookmark:
+                continue
+            bookmark = element.content
+            if bookmark.startswith(AUDIO_BOOKMARK_PREFIX):
+                continue
+            if bookmark not in self._stream_received_bookmarks:
+                missing_bookmarks.append(bookmark)
+        self._stream_received_bookmarks.clear()
+
+        if not missing_bookmarks:
+            return
+        if not self._bookmark_fallback_reported:
+            log.warning(
+                "The active SAPI voice did not report bookmark events; "
+                "queued speech will advance at end of stream."
+            )
+            self._bookmark_fallback_reported = True
+        for bookmark in missing_bookmarks:
+            for handler in self.event_handlers.get(EngineEvent.bookmark_reached, ()):
+                handler(self, bookmark)
 
     def pause(self):
         if self.state is SynthState.busy:
@@ -254,15 +298,14 @@ class SapiSpeechEngine(BaseSpeechEngine):
 
     def _pause_switch(self, switch: bool):
         if self.tts_audio_stream:
-            oldState = self.tts_audio_stream.GetStatus().State
-            if switch and oldState == SPAudioState.Running:
-                # pausing
-                self.tts_audio_stream.setState(SPAudioState.Paused, 0)
-            elif not switch and oldState == SPAudioState.Paused:
-                # unpausing
-                self.tts_audio_stream.setState(SPAudioState.Running, 0)
+            # Some third-party SAPI voices ignore SPVoice.Pause/Resume. Their
+            # audio stream does respond to ISpAudio.SetState, but its reported
+            # state is not reliable enough to gate the resume operation. Set
+            # the requested state unconditionally so a second hotkey press
+            # always reopens playback.
+            state = SPAudioState.Paused if switch else SPAudioState.Running
+            self.tts_audio_stream.setState(state, 0)
+        elif switch:
+            self.tts.Pause()
         else:
-            if switch:
-                self.tts.Pause()
-            else:
-                self.tts.Resume()
+            self.tts.Resume()

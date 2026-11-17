@@ -283,6 +283,7 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
             self.onSliderValueChanged,
             id=self.readingProgressSlider.GetId(),
         )
+        self.readingProgressSlider.Bind(wx.EVT_KEY_DOWN, self.onSliderKeyDown)
 
         self.Bind(wx.EVT_CHAR_HOOK, self.on_key_press_local)
 
@@ -292,6 +293,8 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
         # It is being used also as a label for the page content text area when no book is opened.
         self._no_open_book_status = _("Press (Ctrl + O) to open a document")
         self._has_text_zoom = False
+        self._progress_navigation_timer = None
+        self._pending_slider_percentage = None
         self.__latest_structured_navigation_position = None
         self.__skip_next_image_earcon_position = None
         self._text_position_map = TextCtrlPositionMap("")
@@ -302,6 +305,13 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
     def on_key_press_local(self, event: wx.KeyEvent):
         """Handles local (in-focus) key presses via EVT_CHAR_HOOK."""
         keycode = event.GetKeyCode()
+        if (
+            keycode in (wx.WXK_TAB, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER)
+            and wx.Window.FindFocus() == self.readingProgressSlider
+            and not event.HasAnyModifiers()
+        ):
+            self.onSliderKeyDown(event)
+            return
         key_name = self.wx_key_map.get(keycode)
         # If global mode is on, only the pynput listener should handle media keys.
         if config.conf["reading"]["enable_global_media_keys"]:
@@ -579,7 +589,8 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
         else:
             current_ratio = (self.reader.current_page + 1) / len(self.reader.document)
         percentage_ratio = math.ceil(current_ratio * 100)
-        wx.CallAfter(self.readingProgressSlider.SetValue, percentage_ratio)
+        if self._pending_slider_percentage is None:
+            self.readingProgressSlider.SetValue(percentage_ratio)
         percentage_display = app.current_language.format_percentage(percentage_ratio / 100)
         # Translators: text of reading progress shown in the status bar
         status_text = _("{percentage} completed").format(percentage=percentage_display)
@@ -755,10 +766,50 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
             speech.announce(msg)
 
     def onSliderValueChanged(self, event):
-        target_nav_percentage = event.GetSelection()
+        target_nav_percentage = event.GetInt()
+        self._pending_slider_percentage = target_nav_percentage
+
+    def onSliderKeyDown(self, event):
+        if event.GetKeyCode() in (wx.WXK_TAB, wx.WXK_RETURN, wx.WXK_NUMPAD_ENTER):
+            if self._progress_navigation_timer is not None:
+                self._progress_navigation_timer.Stop()
+                self._progress_navigation_timer = None
+            target_nav_percentage = self._pending_slider_percentage
+            if target_nav_percentage is None:
+                target_nav_percentage = self.readingProgressSlider.GetValue()
+            self._schedule_slider_navigation(
+                target_nav_percentage,
+                delay=1,
+                start_reading=True,
+            )
+            return
+        event.Skip()
+
+    def _schedule_slider_navigation(
+        self, target_nav_percentage, delay=150, start_reading=False
+    ):
+        if self._progress_navigation_timer is not None:
+            self._progress_navigation_timer.Stop()
+        self._progress_navigation_timer = wx.CallLater(
+            delay,
+            self._apply_slider_navigation,
+            target_nav_percentage,
+            start_reading,
+        )
+
+    def _apply_slider_navigation(self, target_nav_percentage, start_reading=False):
+        self._progress_navigation_timer = None
+        self._pending_slider_percentage = None
+        if not self.reader.ready:
+            return
         if self.reader.document.is_single_page_document():
             pos_percentage = math.floor(self.get_last_position() * (target_nav_percentage / 100))
-            target_position = self.get_start_of_line(self.get_line_number(pos_percentage))
+            # PositionToXY/XYToPosition forces RichEdit to lay out everything
+            # preceding the target.  On a large book that can block for seconds.
+            # The clean source text already has the exact line boundary.
+            target_position = self._text_position_map.text.rfind(
+                "\n", 0, max(0, pos_percentage)
+            ) + 1
             self.set_insertion_point(target_position, set_focus_to_text_ctrl=False)
         else:
             page_count = len(self.reader.document)
@@ -772,10 +823,15 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
             self,
             position=target_position,
             text_to_announce="",
+            start_reading=start_reading,
             tts_speech_prefix=_("Reading progress: {percentage}").format(
                 percentage=percentage_display
             ),
         )
+        # Loading a different logical page temporarily focuses the text view.
+        # Return focus to the slider so another arrow press or held-key repeat
+        # can continue adjusting the percentage.
+        self.contentTextCtrl.SetFocus()
 
     def setFrameIcon(self):
         icon_file = app_path(f"{app.name}.ico")
@@ -864,16 +920,13 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
         Returns the left and right boundaries
         for the line containing the given position.
         """
-        # WHY: A double conversion.
-        # 1. Convert clean input position to a real position for the control.
-        # 2. Get the real line boundaries from the control.
-        # 3. Convert the real boundaries back to clean boundaries for the caller.
-        real_pos = self.view_to_control_position(pos)
-        real_start, real_end = self.contentTextCtrl.GetContainingLine(real_pos)
-        return (
-            self.control_to_view_position(real_start),
-            self.control_to_view_position(real_end),
-        )
+        text = self._text_position_map.text
+        pos = max(0, min(pos, len(text)))
+        start = text.rfind("\n", 0, pos) + 1
+        stop = text.find("\n", pos)
+        if stop < 0:
+            stop = len(text)
+        return start, stop
 
     def set_text_direction(self, rtl=False):
         style = self.contentTextCtrl.GetDefaultStyle()

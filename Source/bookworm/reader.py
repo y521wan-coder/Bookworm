@@ -613,6 +613,16 @@ class EBookReader:
             try:
                 log.debug("Navigating to the last saved position.")
                 page_number, pos = self.stored_document_info.get_last_position()
+                normalize_position = getattr(
+                    self.document, "normalize_stored_position", None
+                )
+                if normalize_position is not None:
+                    normalized_page, normalized_pos = normalize_position(page_number, pos)
+                    if (normalized_page, normalized_pos) != (page_number, pos):
+                        page_number, pos = normalized_page, normalized_pos
+                        self.stored_document_info.last_page = page_number
+                        self.stored_document_info.last_position = pos
+                        self.stored_document_info.session().commit()
                 self.go_to_page(
                     page_number,
                     self.storage_to_view_position(pos, page_number),
