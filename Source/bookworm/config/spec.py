@@ -9,8 +9,6 @@ config_spec = StringIO(
     announce_ui_messages = boolean(default=True)
     show_file_name_as_title = boolean(default=False)
     open_with_last_position = boolean(default=True)
-    auto_check_for_updates = boolean(default=True)
-    last_update_check = float(default=0)
     play_pagination_sound = boolean(default=True)
     include_page_label = boolean(default=False)
     show_reading_progress_percentage = boolean(default=True)

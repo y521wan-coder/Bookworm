@@ -38,7 +38,6 @@ class ViewerMenuIds(enum.IntEnum):
     preferences = wx.ID_PREFERENCES
     # Help Menu
     documentation = next(ID_GEN)
-    changelog = next(ID_GEN)
     website = next(ID_GEN)
     license = next(ID_GEN)
     contributors = next(ID_GEN)
@@ -71,5 +70,4 @@ KEYBOARD_SHORTCUTS = {
     BookRelatedMenuIds.viewRenderedAsImage: "Ctrl-R",
     BookRelatedMenuIds.changeReadingMode: "Ctrl-Shift-M",
     wx.ID_PREFERENCES: "Ctrl-Shift-P",
-    ViewerMenuIds.documentation: "F1",
 }

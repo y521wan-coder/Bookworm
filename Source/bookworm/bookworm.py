@@ -56,7 +56,7 @@ def main():
         if log_file:
             message += f"\nThe log has been written to the file:\n{log_file}"
         report_fatal_error(
-            title="Failed to start Bookworm",
+            title=f"Failed to start {app.display_name}",
             message=message,
             exc_info=True,
             log_file=log_file,

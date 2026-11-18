@@ -1,6 +1,7 @@
 # coding: utf-8
 
 import sys
+import webbrowser
 from dataclasses import dataclass
 from enum import IntEnum, auto
 from functools import partial
@@ -9,7 +10,7 @@ import wx
 import wx.lib.sized_controls as sc
 from wx.adv import CommandLinkButton
 
-from bookworm import app, config, pandoc, runtime
+from bookworm import app, config, pandoc, paths, runtime
 from bookworm.concurrency import threaded_worker
 from bookworm.i18n import get_available_locales, set_locale
 from bookworm.logger import logger
@@ -29,6 +30,8 @@ from .components import (
 )
 
 log = logger.getChild(__name__)
+
+HIDDEN_FEATURES_ICON = "settings"
 
 
 if PLATFORM == "win32":
@@ -322,13 +325,6 @@ class GeneralPanel(SettingsPanel):
                 "Try to support the screen reader's continuous reading mode by automatically turning pages (may not work in some cases)"
             ),
             name="general.use_continuous_reading",
-        )
-        wx.CheckBox(
-            miscBox,
-            -1,
-            # Translators: the label of a checkbox
-            _("Automatically check for updates"),
-            name="general.auto_check_for_updates",
         )
         if not runtime.IS_RUNNING_PORTABLE:
             # Translators: the title of a group of controls shown in the
@@ -654,6 +650,114 @@ class AdvancedSettingsPanel(SettingsPanel):
             )
 
 
+class HiddenFeaturesPanel(SettingsPanel):
+    """Commands intentionally kept out of the normal application menus."""
+
+    config_section = "bookshelf"
+
+    def addControls(self):
+        help_box = self.make_static_box(_("&Help"))
+        self._add_button(
+            help_box,
+            _("&User guide...\tF1").replace("\tF1", ""),
+            self.on_user_guide,
+        )
+        self._add_button(help_box, _("Bookworm &website..."), self.on_website)
+        self._add_button(help_box, _("&License"), self.on_license)
+        self._add_button(help_box, _("Con&tributors"), self.on_contributors)
+        if app.is_frozen and not app.debug:
+            self._add_button(
+                help_box,
+                _("&Restart with debug-mode enabled"),
+                self.on_restart_with_debug,
+            )
+        self._add_button(
+            help_box,
+            _("&About Bookworm") + "...",
+            self.on_about,
+        )
+
+        web_box = self.make_static_box(_("&Web Services"))
+        self._add_button(
+            web_box,
+            _("&Open URL\tCtrl+U").split("\t", 1)[0],
+            self.on_open_url,
+        )
+        self._add_button(
+            web_box,
+            _("&Open URL From Clipboard\tCtrl+Shift+U").split("\t", 1)[0],
+            self.on_open_url_from_clipboard,
+        )
+        self._add_button(
+            web_box,
+            _("&Wikipedia quick search"),
+            self.on_wikipedia_quick_search,
+        )
+
+        bookshelf_box = self.make_static_box(_("Local Bookshelf"))
+        self._add_button(
+            bookshelf_box,
+            _("&Open Bookshelf"),
+            self.on_open_bookshelf,
+        )
+        self._add_button(
+            bookshelf_box,
+            _("&Add to local bookshelf..."),
+            self.on_add_to_bookshelf,
+        )
+        wx.CheckBox(
+            bookshelf_box,
+            -1,
+            _("Automatically add opened books to the local bookshelf"),
+            name="bookshelf.auto_add_opened_documents_to_bookshelf",
+        )
+
+    def _add_button(self, parent, label, handler):
+        button = wx.Button(parent, -1, label)
+        button.SetSizerProps(expand=True)
+        button.Bind(wx.EVT_BUTTON, handler)
+
+    @property
+    def _view(self):
+        return wx.GetApp().mainFrame
+
+    def _get_service(self, name):
+        return wx.GetApp().service_handler.get_service(name)
+
+    def on_user_guide(self, event):
+        self._view.helpMenu.onOpenDocumentation(event)
+
+    def on_website(self, event):
+        webbrowser.open(app.website)
+
+    def on_license(self, event):
+        wx.LaunchDefaultApplication(str(paths.resources_path("license.txt")))
+
+    def on_contributors(self, event):
+        wx.LaunchDefaultApplication(str(paths.resources_path("contributors.txt")))
+
+    def on_restart_with_debug(self, event):
+        restart_application(debug=True)
+
+    def on_about(self, event):
+        self._view.helpMenu.onAbout(event)
+
+    def on_open_url(self, event):
+        self._get_service("url_open").onOpenUrl(event)
+
+    def on_open_url_from_clipboard(self, event):
+        self._get_service("url_open").onOpenUrlFromClipboard(event)
+
+    def on_wikipedia_quick_search(self, event):
+        self._get_service("wikipedia").onQuickWikiSearch(event)
+
+    def on_open_bookshelf(self, event):
+        self._get_service("bookshelf").menu.onOpenBookshelf(event)
+
+    def on_add_to_bookshelf(self, event):
+        self._get_service("bookshelf").menu.onAddDocumentToLocalBookshelf(event)
+
+
 class PreferencesDialog(SimpleDialog):
     """Preferences dialog."""
 
@@ -665,6 +769,7 @@ class PreferencesDialog(SimpleDialog):
             (1, "appearance", AppearancePanel, _("Appearance")),
             # Translators: the label of a page in the settings dialog
             (1000, "advanced", AdvancedSettingsPanel, _("Advanced")),
+            (1100, HIDDEN_FEATURES_ICON, HiddenFeaturesPanel, "隐藏功能"),
         ]
         page_info.extend(wx.GetApp().service_handler.get_settings_panels())
         page_info.sort()

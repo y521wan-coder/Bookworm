@@ -28,20 +28,10 @@ class UrlOpenService(BookwormService):
         self._cancel_query = threading.Event()
 
     def process_menubar(self, menubar):
-        webservices_menu = (
-            wx.GetApp().service_handler.get_service("webservices").web_sservices_menu
-        )
-        open_url = webservices_menu.Insert(0, -1, _("&Open URL\tCtrl+U"))
-        self.open_url_from_clipboard = webservices_menu.Insert(
-            1, -1, _("&Open URL From Clipboard\tCtrl+Shift+U")
-        )
-        self.view.Bind(wx.EVT_MENU, self.onOpenUrl, open_url)
-        self.view.Bind(
-            wx.EVT_MENU, self.onOpenUrlFromClipboard, self.open_url_from_clipboard
-        )
+        return None
 
     def get_keyboard_shortcuts(self):
-        return {self.open_url_from_clipboard.GetId(): "Ctrl-Shift-U"}
+        return {}
 
     def onOpenUrl(self, event):
         url = self.view.get_text_from_user(

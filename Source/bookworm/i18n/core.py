@@ -5,7 +5,7 @@ import locale as pylocale
 import os
 from pathlib import Path
 
-from bookworm import app, config, paths
+from bookworm import app, config, install_translation, paths
 from bookworm.logger import logger
 from bookworm.user import get_user_locale
 from bookworm.user import set_app_locale as _set_app_locale
@@ -63,7 +63,7 @@ def set_locale(locale_identifier):
         translation = gettext.translation(
             app.name, localedir=paths.locale_path(), languages=[lang]
         )
-        translation.install(names=["ngettext"])
+        install_translation(translation)
         os.environ["LANG"] = localeinfo.pylang
         _set_app_locale(localeinfo)
         app.current_language = localeinfo
@@ -75,6 +75,7 @@ def set_locale(locale_identifier):
         os.environ["LANG"] = "en"
         _set_app_locale(LocaleInfo("en"))
         app.current_language = get_available_locales()["en"]
+        install_translation(gettext.NullTranslations())
 
 
 def setup_i18n():

@@ -7,7 +7,7 @@ ManifestSupportedOS all
 XPStyle on
 Name "$%IAPP_DISPLAY_NAME%"
 OutFile "$%IAPP_DISPLAY_NAME%-$%IAPP_VERSION%-$%IAPP_ARCH%-setup.exe"
-InstallDir "$PROGRAMFILES\$%IAPP_DISPLAY_NAME%"
+InstallDir "$PROGRAMFILES\Bookworm"
 InstallDirRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$%IAPP_NAME%" "InstallLocation"
 RequestExecutionLevel admin
 SetCompress auto
@@ -37,7 +37,7 @@ Var /GLOBAL OldVersionFound
 var StartMenuFolder
 !insertmacro MUI_PAGE_STARTMENU startmenu $StartMenuFolder
 !insertmacro MUI_PAGE_INSTFILES
-!define MUI_FINISHPAGE_RUN "$INSTDIR\$%IAPP_DISPLAY_NAME%.exe"
+!define MUI_FINISHPAGE_RUN "$INSTDIR\$%IAPP_NAME%.exe"
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -63,18 +63,16 @@ Section
       ExecWait '"$OldInstallPath\Bookworm.exe" kill-other-instances'
           # Set the working directory and execute the old uninstaller
     SetOutPath "$OldInstallPath"
-    ExecWait '"$OldInstallPath\Uninstall.exe" /S _?=$INSTDIR'
+    ExecWait '"$OldInstallPath\Uninstall.exe" /S _?=$OldInstallPath'
     DetailPrint "Previous version has been uninstalled."
   ${EndIf}
 SetShellVarContext All
 SetOutPath "$INSTDIR"
 File /r "$%IAPP_FROZEN_DIRECTORY%\*"
-CreateShortCut "$DESKTOP\$%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\$%IAPP_DISPLAY_NAME%.exe" "" "" "" SW_SHOWNORMAL "" "$%IAPP_DESCRIPTION% from $%IAPP_AUTHOR% ($%IAPP_WEBSITE%)"
-CreateShortCut "$DESKTOP\Bookshelf.lnk" "$INSTDIR\$%IAPP_DISPLAY_NAME%.exe" "bookshelf" "$INSTDIR\bookshelf.ico" "" SW_SHOWNORMAL "" "Bookworm Bookshelf from $%IAPP_AUTHOR% ($%IAPP_WEBSITE%)"
+CreateShortCut "$DESKTOP\$%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\$%IAPP_NAME%.exe" "" "" "" SW_SHOWNORMAL "" "$%IAPP_DESCRIPTION% from $%IAPP_AUTHOR% ($%IAPP_WEBSITE%)"
 !insertmacro MUI_STARTMENU_WRITE_BEGIN startmenu
 CreateDirectory "$SMPROGRAMS\$StartMenuFolder"
-CreateShortCut "$SMPROGRAMS\$StartMenuFolder\$%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\$%IAPP_DISPLAY_NAME%.exe"
-CreateShortCut "$SMPROGRAMS\$StartMenuFolder\Bookshelf.lnk" "$INSTDIR\$%IAPP_DISPLAY_NAME%.exe" "bookshelf" "$INSTDIR\bookshelf.ico"
+CreateShortCut "$SMPROGRAMS\$StartMenuFolder\$%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\$%IAPP_NAME%.exe"
 CreateShortCut "$SMPROGRAMS\$StartMenuFolder\$%IAPP_DISPLAY_NAME% English User Guide.lnk" "$INSTDIR\resources\userguide\en\$%IAPP_NAME%.html"
 CreateShortCut "$SMPROGRAMS\$StartMenuFolder\Uninstall $%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\Uninstall.exe"
 !insertmacro MUI_STARTMENU_WRITE_END
@@ -116,10 +114,14 @@ Function .onInit
   StrCpy $OldVersionFound 1
 done:
 
-  ${If} $%IAPP_ARCH% == "x64"
-    StrCpy $instdir "$programfiles64\$%IAPP_DISPLAY_NAME%"
+  ${If} $OldVersionFound == 1
+    StrCpy $instdir "$OldInstallPath"
   ${Else}
-    StrCpy $instdir "$programfiles32\$%IAPP_DISPLAY_NAME%"
+    ${If} $%IAPP_ARCH% == "x64"
+      StrCpy $instdir "$programfiles64\Bookworm"
+    ${Else}
+      StrCpy $instdir "$programfiles32\Bookworm"
+    ${EndIf}
   ${EndIf}
 
   IfFileExists "$INSTDIR\Bookworm.exe" 0 +2

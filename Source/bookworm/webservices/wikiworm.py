@@ -49,42 +49,13 @@ class WikipediaService(BookwormService):
         self.wiki_quick_search_id = wx.NewIdRef()
 
     def process_menubar(self, menubar):
-        webservices_menu = (
-            wx.GetApp().service_handler.get_service("webservices").web_sservices_menu
-        )
-        webservices_menu.Append(
-            self.wiki_quick_search_id,
-            _("&Wikipedia quick search"),
-            _("Get a quick definition from Wikipedia"),
-        )
-        self.view.Bind(
-            wx.EVT_MENU, self.onQuickWikiSearch, id=self.wiki_quick_search_id
-        )
+        return None
 
     def get_contextmenu_items(self):
-        rv = ()
-        # First, get the clean selection range from our gatekeeper method
-        selection_range = self.view.get_selection_range()
-        # Check if there is an actual selection
-        if selection_range.start != selection_range.stop:
-            # Now, safely get the text based on the clean range
-            selected_text = self.view.get_text_by_range(
-                selection_range.start, selection_range.stop
-            ).strip()
-            # Only proceed if the stripped text is not empty
-            if selected_text:
-                rv = [
-                    (
-                        2,
-                        _("Define using Wikipedia"),
-                        _("Define the selected text using Wikipedia"),
-                        self.wiki_quick_search_id,
-                    )
-                ]
-        return rv
+        return ()
 
     def get_keyboard_shortcuts(self):
-        return {self.wiki_quick_search_id: "Ctrl+Shift+W"}
+        return {}
 
     def onQuickWikiSearch(self, event):
         term = ""

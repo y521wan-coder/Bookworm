@@ -5,7 +5,7 @@ import struct
 import sys
 
 name = "bookworm"
-display_name = "Bookworm"
+display_name = "飞船阅读"
 description = "The Universally accessible document reader"
 author = "Blind Pandas"
 author_email = "info@blindpandas.com"
@@ -13,10 +13,6 @@ version = "2026.2.6"
 version_ex = "2026.2.6.0"
 url = "https://github.com/blindpandas/bookworm"
 website = "https://github.com/blindpandas/bookworm"
-changelog_url = f"{url}/releases/tag/{version}"
-update_url = (
-    "https://raw.githubusercontent.com/blindpandas/bookworm/main/update_info.json"
-)
 copyright = f"Copyright (c) 2026 {author} and {display_name} contributors."
 exit_code = 0
 is_frozen = getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS")
@@ -26,6 +22,11 @@ debug = False
 prog_id = "bookworm.a11y.reader.1"
 # These variables are set upon app initialization
 args = extra_args = command_line_mode = as_main = current_language = None
+
+
+def brand_text(text: str) -> str:
+    """Replace the upstream product name in user-visible text."""
+    return text.replace("Bookworm", display_name)
 
 # Version pattern
 VERSION_PATTERN = r"""

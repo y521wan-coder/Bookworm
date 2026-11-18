@@ -54,6 +54,7 @@ HIDDEN_SUBMODULES = [
 ]
 HIDDEN_IMPORTS = [
     "alembic",
+    "bookworm.platforms.win32.speech_engines.zdsr",
     "numpy",
     "cv2",
     "logging.config",
@@ -83,6 +84,11 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=[
+        "bookworm.otau",
+        "bookworm.updater",
+        "bookworm.platforms.linux.updater",
+        "bookworm.platforms.win32.update_paths",
+        "bookworm.platforms.win32.updater",
         "tkinter",
     ],
     win_no_prefer_redirects=False,

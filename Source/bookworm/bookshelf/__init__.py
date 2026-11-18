@@ -43,29 +43,19 @@ class BookshelfService(BookwormService):
             auto_add_opened_documents_to_bookshelf="boolean(default=False)",
         ),
     }
-    stateful_menu_ids = StatefulBookshelfMenuIds
+    stateful_menu_ids = ()
 
     def __post_init__(self):
+        self.menu = BookshelfMenu(self)
         reader_book_loaded.connect(
             self.on_reader_loaded, sender=self.reader, weak=False
         )
 
     def get_settings_panels(self):
-        return [
-            # Translators: the label of a page in the settings dialog
-            (100, "bookshelf", BookshelfSettingsPanel, _("Bookshelf")),
-        ]
+        return ()
 
     def process_menubar(self, menubar):
-        self.menu = BookshelfMenu(self)
-        # Translators: the label of an item in the application menubar
-        self.view.fileMenu.Insert(
-            6,
-            -1,
-            # Translators: the label of the bookshelf sub menu found in the file menu of the application
-            _("Boo&kshelf"),
-            self.menu,
-        )
+        return None
 
     def on_reader_loaded(self, sender):
         if not config.conf["bookshelf"]["auto_add_opened_documents_to_bookshelf"]:

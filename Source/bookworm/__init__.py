@@ -1,6 +1,18 @@
 # coding: utf-8
 
+import builtins
 import gettext
 
-# Make the gettext function _() available in the global namespace, even if no i18n is in use
-gettext.install("bookworm", names=["ngettext"])
+from bookworm import app
+
+
+def install_translation(translation):
+    """Install gettext functions while applying the local product name."""
+    builtins._ = lambda message: app.brand_text(translation.gettext(message))
+    builtins.ngettext = lambda singular, plural, number: app.brand_text(
+        translation.ngettext(singular, plural, number)
+    )
+
+
+# Make translation functions available even before locale initialization.
+install_translation(gettext.NullTranslations())

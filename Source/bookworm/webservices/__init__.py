@@ -19,5 +19,4 @@ class WebservicesBaseService(BookwormService):
         self.web_sservices_menu = wx.Menu()
 
     def process_menubar(self, menubar):
-        # Translators: the label of an item in the application menubar
-        return (40, self.web_sservices_menu, _("&Web Services"))
+        return None

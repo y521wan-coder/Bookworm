@@ -872,90 +872,7 @@ class HelpMenu(BaseMenu):
     """The application help menu."""
 
     def create(self):
-        self.Append(
-            ViewerMenuIds.documentation,
-            # Translators: the label of an item in the application menubar
-            _("&User guide...\tF1"),
-            # Translators: the help text of an item in the application menubar
-            _("View Bookworm manuals"),
-        )
-        self.Append(
-            ViewerMenuIds.changelog,
-            # Translators: the label of an item in the application menubar
-            _("What's &New..."),
-            # Translators: the help text of an item in the application menubar
-            _("View the application's changelog"),
-        )
-        self.Append(
-            ViewerMenuIds.website,
-            # Translators: the label of an item in the application menubar
-            _("Bookworm &website..."),
-            # Translators: the help text of an item in the application menubar
-            _("Visit the official website of Bookworm"),
-        )
-        self.Append(
-            ViewerMenuIds.license,
-            # Translators: the label of an item in the application menubar
-            _("&License"),
-            # Translators: the help text of an item in the application menubar
-            _("View legal information about this program ."),
-        )
-        self.Append(
-            ViewerMenuIds.contributors,
-            # Translators: the label of an item in the application menubar
-            _("Con&tributors"),
-            # Translators: the help text of an item in the application menubar
-            _("View a list of notable contributors to the program."),
-        )
-        if app.is_frozen and not app.debug:
-            self.Append(
-                ViewerMenuIds.restart_with_debug,
-                # Translators: the label of an item in the application menubar
-                _("&Restart with debug-mode enabled"),
-                # Translators: the help text of an item in the application menubar
-                _("Restart the program with debug mode enabled to show errors"),
-            )
-            self.view.Bind(
-                wx.EVT_MENU,
-                self.onRestartWithDebugMode,
-                id=ViewerMenuIds.restart_with_debug,
-            )
-        self.Append(
-            ViewerMenuIds.about,
-            # Translators: the label of an item in the application menubar
-            _("&About Bookworm") + "...",
-            # Translators: the help text of an item in the application menubar
-            _("Show general information about this program"),
-        )
-        # Bind menu events
-        self.view.Bind(
-            wx.EVT_MENU, self.onOpenDocumentation, id=ViewerMenuIds.documentation
-        )
-        self.view.Bind(
-            wx.EVT_MENU,
-            lambda e: webbrowser.open(app.changelog_url),
-            id=ViewerMenuIds.changelog,
-        )
-        self.view.Bind(
-            wx.EVT_MENU,
-            lambda e: webbrowser.open(app.website),
-            id=ViewerMenuIds.website,
-        )
-        self.view.Bind(
-            wx.EVT_MENU,
-            lambda e: wx.LaunchDefaultApplication(
-                str(paths.resources_path("license.txt"))
-            ),
-            id=ViewerMenuIds.license,
-        )
-        self.view.Bind(
-            wx.EVT_MENU,
-            lambda e: wx.LaunchDefaultApplication(
-                str(paths.resources_path("contributors.txt"))
-            ),
-            id=ViewerMenuIds.contributors,
-        )
-        self.view.Bind(wx.EVT_MENU, self.onAbout, id=ViewerMenuIds.about)
+        pass
 
     def onAbout(self, event):
         wx.MessageBox(
@@ -1002,8 +919,6 @@ class MenubarProvider:
             (5, self.searchMenu, _("&Search")),
             # Translators: the label of an item in the application menubar
             (10, self.documentMenu, _("&Document")),
-            # Translators: the label of an item in the application menubar
-            (100, self.helpMenu, _("&Help")),
         ]
         self.Bind(
             wx.EVT_MENU,

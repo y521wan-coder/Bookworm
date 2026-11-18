@@ -48,8 +48,10 @@ from .tts_gui import (
 
 log = logger.getChild(__name__)
 GLOBAL_PAUSE_HOTKEY_ID = int(wx.NewIdRef())
-# MOD_NOREPEAT (0x4000) prevents a held F6 key from rapidly toggling state.
+# MOD_NOREPEAT (0x4000) prevents a held Space key from rapidly toggling state.
 GLOBAL_PAUSE_HOTKEY_MODIFIERS = wx.MOD_CONTROL | wx.MOD_ALT | wx.MOD_WIN | 0x4000
+GLOBAL_PAUSE_HOTKEY_KEY = wx.WXK_SPACE
+GLOBAL_PAUSE_HOTKEY_NAME = "Ctrl+Win+Alt+Space"
 
 # Custom signals
 restart_speech = _signals.signal("tts/restart-speech")
@@ -150,13 +152,19 @@ class TextToSpeechService(BookwormService):
             registered = self.view.RegisterHotKey(
                 GLOBAL_PAUSE_HOTKEY_ID,
                 GLOBAL_PAUSE_HOTKEY_MODIFIERS,
-                wx.WXK_F6,
+                GLOBAL_PAUSE_HOTKEY_KEY,
             )
         except Exception:
-            log.exception("Failed to register Ctrl+Win+Alt+F6 global pause hotkey.")
+            log.exception(
+                "Failed to register %s global pause hotkey.",
+                GLOBAL_PAUSE_HOTKEY_NAME,
+            )
             return
         if not registered:
-            log.error("Windows rejected Ctrl+Win+Alt+F6 global pause hotkey registration.")
+            log.error(
+                "Windows rejected %s global pause hotkey registration.",
+                GLOBAL_PAUSE_HOTKEY_NAME,
+            )
             return
         self.view.Bind(
             wx.EVT_HOTKEY,
@@ -164,7 +172,7 @@ class TextToSpeechService(BookwormService):
             id=GLOBAL_PAUSE_HOTKEY_ID,
         )
         self._global_pause_hotkey_registered = True
-        log.info("Registered global pause hotkey: Ctrl+Win+Alt+F6.")
+        log.info("Registered global pause hotkey: %s.", GLOBAL_PAUSE_HOTKEY_NAME)
 
     def stop_global_pause_hotkey(self):
         if not self._global_pause_hotkey_registered:

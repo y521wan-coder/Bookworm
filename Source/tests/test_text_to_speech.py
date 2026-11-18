@@ -348,8 +348,10 @@ def test_global_pause_uses_native_windows_hotkey():
     service.view.RegisterHotKey.assert_called_once_with(
         tts.GLOBAL_PAUSE_HOTKEY_ID,
         tts.GLOBAL_PAUSE_HOTKEY_MODIFIERS,
-        tts.wx.WXK_F6,
+        tts.GLOBAL_PAUSE_HOTKEY_KEY,
     )
+    assert tts.GLOBAL_PAUSE_HOTKEY_KEY == tts.wx.WXK_SPACE
+    assert tts.GLOBAL_PAUSE_HOTKEY_NAME == "Ctrl+Win+Alt+Space"
     assert service._global_pause_hotkey_registered
     service.on_global_pause_hotkey(None)
 

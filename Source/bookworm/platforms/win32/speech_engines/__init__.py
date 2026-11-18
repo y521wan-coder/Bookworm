@@ -1,8 +1,12 @@
 # coding: utf-8
 
 from .sapi import SapiSpeechEngine
+from .zdsr import ZdsrSpeechEngine
 
 TTS_ENGINES = (SapiSpeechEngine,)
+
+if ZdsrSpeechEngine.check():
+    TTS_ENGINES = (*TTS_ENGINES, ZdsrSpeechEngine)
 
 
 try:

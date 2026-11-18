@@ -1,431 +1,190 @@
-Bookworm 2026.2.6 开发交接说明
-更新时间：2026-11-16（Asia/Shanghai）
+飞船阅读 2026.2.6 开发交接说明
+更新：2026-11-18（Asia/Shanghai）
 
 ============================================================
-一、必须先看：当前状态
+一、当前状态
 ============================================================
 
-当前源码、已安装程序和最新安装包版本均为 2026.2.6。
+权威开发归档：D:\Bookworm_Development_Project
+权威源码：D:\Bookworm_Development_Project\Source
+版本：2026.2.6
+最新显示名：飞船阅读
 
-开发归档根目录：
-  D:\Bookworm_Development_Project
+兼容性约束：
+1. 内部程序名、配置目录和 EXE 文件名仍为 bookworm / Bookworm.exe。
+2. 安装路径仍为 C:\Program Files\Bookworm。
+3. 不得破坏旧配置、最近阅读、阅读位置和文件关联兼容性。
 
-新会话应优先使用归档中的源码：
-  D:\Bookworm_Development_Project\Source
+最新安装包（D 盘唯一安装包）：
+  D:\飞船阅读-2026.2.6-x64-setup.exe
+  大小：117,094,659 字节
+  SHA-256：57DE5362652180815244E7A774E0BDCD1D03368EA40526D38857800E7691FF97
+  ProductName：飞船阅读
+  FileVersion：2026.2.6
 
-旧中文工作目录已按用户要求永久删除。D 盘上的唯一权威工作副本是：
-  D:\Bookworm_Development_Project
+重要：用户要求自己手动覆盖安装测试。新包已生成和验证，但本机尚未安装该新包。
 
-本机安装目录：
-  C:\Program Files\Bookworm
+本机当前安装的仍是上一轮内核：
+  C:\Program Files\Bookworm\Bookworm.exe
+  ProductName：晨钟暮鼓阅读
+  FileVersion：2026.2.6
+  SHA-256：6A6B4C115AFA772BC949B75BE412F88C6BF6A8DB7F35D1918C4DD309FB3E3E18
 
-最新版安装包（归档内唯一的 Bookworm 安装包）：
-  D:\Bookworm_Development_Project\Latest_Installer\Bookworm-2026.2.6-x64-setup.exe
-
-最新版安装包 SHA-256：
-  ADF1D1F1CDC7ED5F1F272A53F632F7EAF0C71D4C75F8261588796C9252D42A4D
-
-本机已覆盖安装为 2026.2.6，注册表和 EXE 版本均已验证。
-
-完整自动测试结果：
-  244 passed, 7 warnings
-
-这些 warnings 来自现有第三方库的弃用提示（SWIG、mobi/imghdr、babel/pytz），不是测试失败。
-
-============================================================
-二、归档目录结构
-============================================================
-
-D:\Bookworm_Development_Project
-  Source\
-    完整当前源码、.venv 虚拟环境、测试、构建脚本、PyInstaller 构建目录及产物。
-    为满足“归档中只保留一个最新安装包”，Source 内没有 setup.exe 安装包。
-
-  Latest_Installer\
-    Bookworm-2026.2.6-x64-setup.exe
-    这是归档中唯一的 Bookworm 安装包。
-
-  Build_Tools\.buildtools\
-    NSIS 3.11 等构建工具。
-
-  Original_Source\
-    bookworm-2026.2-original.zip
-    上游原始源码压缩包，用于对照；不是当前已修改源码。
-
-  Voice_Library\
-    AiSoundSapi5.exe
-    用户当前“小峰”SAPI 语音库的安装程序。
-
-  Logs\Application_Logs\
-    Bookworm 应用日志快照，包括 bookworm.log、error.log、wx.log 等。
-
-  Logs\bookworm.errors.log
-    2026.2.5 退出阶段错误的历史日志快照，用于了解已修复的问题。
-
-  Config\Bookworm_Config\
-    用户 Bookworm 配置和语音配置快照。
-
-  Test_Data\
-    176《凡人修仙传》（校对版全本+番外）作者：忘语.txt
-    真实大文件测试书，大小约 15.2 MB。
-
-  交接说明.txt
-    本文件。
+不得误记为“飞船阅读”新包已完成本机安装验证。
 
 ============================================================
-三、安装包保留规则（用户明确要求，必须遵守）
+二、已完成的定制功能
 ============================================================
 
-1. 只保留最新版本的 Bookworm 安装包。
-2. 新版必须先完成构建、哈希校验、静默安装、版本检查和启动/退出验证。
-3. 新版确认正常后，删除所有旧版本安装包，不留任何备份。
-4. 需要检查并清理以下位置中的旧 setup.exe：
-     D:\ 根目录
-     当前源码的 scripts 目录
-     D:\Bookworm_Development_Project\Source 及其子目录
-     D:\Bookworm_Development_Project\Latest_Installer
-     其他 Bookworm 相关旧 Setup 目录
-5. 归档的 Latest_Installer 目录中始终只能有一个、带完整最新版本号的安装包。
-6. 不再在 D 盘根目录保留重复的固定名称安装包；需要发给朋友时直接使用 Latest_Installer 中的最新版。
-7. 删除旧安装包前必须精确列出并核对路径；不要删除源码、日志、配置、语音库或原始源码压缩包。
+1. 大型 TXT
+   核心：Source\bookworm\document\formats\plain_text.py、reader.py、gui\book_viewer\__init__.py、structured_text\text_info.py。
+   参数：PAGINATION_THRESHOLD_CHARS = 250_000，TARGET_PAGE_CHARS = 50_000。
+   大 TXT 分成逻辑页，避免整本进入单个 RichEdit。
+   必须保留旧内容哈希、旧阅读位置和 normalize_stored_position() 迁移。
 
-本次已永久删除且不在回收站：
-  Bookworm 2026.2.1、2026.2.2、2026.2.3、2026.2.4、2026.2.5 的旧安装包。
-  原始 Bookworm-2026.2-Setup 文件夹中的旧安装包及其空目录。
-  D:\电脑朗读开源软件和语音库 整个旧中文开发目录。
-  D 盘根目录的重复最新版安装包和重复测试书。
+2. 百分比滑块
+   EVT_SLIDER 只写入 _pending_slider_percentage，不立即跳转。
+   Tab、Enter、小键盘 Enter 确认后才跳转并开始朗读。
+   wx.CallLater 延迟必须为 1 毫秒，不得改为 0。
+   用户调整时，后台进度不得覆盖待确认值。
 
-D 盘今后的所有 Bookworm 开发、构建、测试和交接资料都必须放在 D:\Bookworm_Development_Project 内，不要在外部重新建立重复副本。
+3. 全局暂停/继续
+   最新热键：Ctrl + Win + Alt + Space。
+   核心：Source\bookworm\text_to_speech\__init__.py、tts_gui.py、platforms\win32\speech_engines\sapi\_sapi.py。
+   注册：wx.MOD_CONTROL | wx.MOD_ALT | wx.MOD_WIN | 0x4000，key = wx.WXK_SPACE。
+   0x4000 是 MOD_NOREPEAT。热键仍调用原 pause_or_resume()。
+   SAPI 暂停：tts_audio_stream.setState(SPAudioState.Paused, 0)。
+   SAPI 恢复：tts_audio_stream.setState(SPAudioState.Running, 0)。
+   恢复必须无条件设置 Running，不得用不可靠的 GetStatus 阻止。
+   StartStream/EndStream 不得覆盖 paused。
+   窗口已销毁时，热键清理 RuntimeError 不得传播。
+   Windows 本机注册探测已通过：wx.WXK_SPACE = 32。
 
-============================================================
-四、用户要求的最终操作逻辑
-============================================================
+4. 争渡读屏语音库
+   核心：Source\bookworm\platforms\win32\speech_engines\zdsr.py、__init__.py、scripts\builder\Bookworm.spec。
+   使用命名独立通道：InitTTS(1, "飞船阅读", FALSE)。
+   通道名必须严格为“飞船阅读”，不得添加后缀。
+   独立通道可短暂返回 9，等待上限为 3.0 秒；本机已探测到最终状态 4。
+   争渡用户可用 ZDSR+F4 切换到“飞船阅读”通道。
 
-1. 打开大 TXT 电子书不能长时间卡死。
-2. 阅读过程中切换百分比不能卡死。
-3. 正在朗读时按一次 Tab，焦点进入“阅读进度百分比”滑块。
-4. 用左右方向键连续调整百分比，调整期间不能每 1% 就立即跳转或重启朗读。
-5. 再按一次 Tab，跳到已经选好的百分比，并从该位置开始朗读。
-6. Enter 和小键盘 Enter 也保留为确认百分比的按键。
-7. 全局热键 Ctrl + Windows + Alt + F6：第一次真正停止书籍声音，第二次从暂停位置恢复。
-8. 不影响语音参数设置、媒体键、书架、最近阅读和其他文档格式。
+5. 首选项与“隐藏功能”
+   “隐藏功能”页必须使用现有 settings 图标，不得恢复不存在的 hidden_features 图标名。
+   普通界面已隐藏帮助菜单、网络服务菜单、书架子菜单和维基百科右键入口。
+   F1、Ctrl+U、Ctrl+Shift+U、Ctrl+Shift+W 等原入口不再注册。
+   功能实现仍保留，由“隐藏功能”页调用。
 
-============================================================
-五、大型 TXT 性能修复
-============================================================
-
-核心文件：
-  Source\bookworm\document\formats\plain_text.py
-  Source\bookworm\reader.py
-  Source\bookworm\gui\book_viewer\__init__.py
-  Source\bookworm\structured_text\text_info.py（及相关队列逻辑）
-
-plain_text.py 当前参数：
-  PAGINATION_THRESHOLD_CHARS = 250_000
-  TARGET_PAGE_CHARS = 50_000
-
-实现：
-1. 小 TXT 保持原有单页行为。
-2. 超过 250,000 字符的大 TXT 按约 50,000 字符、尽量在换行处切成逻辑页。
-3. 真实《凡人修仙传》约 776 万字符，分成约 156 个逻辑页。
-4. 避免把全书一次放入单个 RichEdit 控件，从而消除导入和进度跳转卡死。
-5. normalize_stored_position() 迁移旧版单页绝对位置。
-6. 保留旧内容哈希和旧阅读位置兼容逻辑，不能删除。
-7. 多页文档的百分比跳转直接计算目标逻辑页，不让 RichEdit 对全书做布局。
-
-安装后 benchmark 典型结果：
-  冷启动约 7.2 秒。
-  热启动约 3.0 秒。
-  ExitCode = 0。
+6. 更新功能已彻底移除
+   自动更新、手动检测更新、更新日志 / What's New 必须始终不存在。
+   已删除 bookworm\otau.py、bookworm\updater.py、platforms\win32\updater.py、platforms\linux\updater.py 和 tests\test_otau.py。
+   不得恢复服务、配置、菜单、网址或冻结模块，也不得放入“隐藏功能”。
 
 ============================================================
-六、百分比滑块修复
+三、当前验证结果
 ============================================================
 
-核心文件：
-  Source\bookworm\gui\book_viewer\__init__.py
+定向测试：27 passed。
+完整测试：237 passed, 8 warnings。
+warnings 是现有第三方库弃用提示，不是测试失败。
 
-关键函数：
-  on_key_press_local
-  onSliderValueChanged
-  onSliderKeyDown
-  _schedule_slider_navigation
-  _apply_slider_navigation
+冻结 EXE：
+  D:\Bookworm_Development_Project\Source\scripts\builder\dist\x64\Bookworm\Bookworm.exe
+  ProductName：飞船阅读
+  FileVersion：2026.2.6
+  SHA-256：128E94B01A05BC78480AECD80A725415CF3ACCB0D1C8CC8F43FCD9436285A1DE
 
-当前逻辑：
-1. EVT_SLIDER 变化只保存到 self._pending_slider_percentage，不立刻跳转。
-2. EVT_CHAR_HOOK 在滑块有焦点时优先处理无修饰键的 Tab、Return、小键盘 Enter。
-3. 确认时使用 _schedule_slider_navigation(..., delay=1, start_reading=True)。
-4. delay 必须为 1 毫秒，不能改为 0。真实 wx 主消息循环测试证明 CallLater(0) 可能不执行。
-5. 后台阅读进度只有在 _pending_slider_percentage 为 None 时才能更新滑块，避免覆盖用户正在选择的值。
-6. 提交后焦点回到 contentTextCtrl，符合“第二个 Tab 回正文并开始朗读”。
-7. reading_position_change 的 start_reading=True 让 TTS 从目标位置启动、恢复或重启。
+《凡人修仙传》冻结产物 benchmark：
+  冷启动 9.37 秒，ExitCode = 0。
+  热启动 3.02 秒，ExitCode = 0。
 
-关键测试：
-  tests\test_navigation.py
-  tests\test_slider_event_loop.py
-
-test_slider_event_loop.py 使用真实 wx.App、wx.Frame、wx.Slider 和主消息循环验证 Tab 提交。
+PYZ-00.toc 包含 zdsr，不包含 otau/updater 四个已删除模块。
 
 ============================================================
-七、全局热键和真实音频暂停/恢复
+四、用户安装后必须人工验收
 ============================================================
 
-核心文件：
-  Source\bookworm\text_to_speech\__init__.py
-  Source\bookworm\platforms\win32\speech_engines\sapi\_sapi.py
+1. 标题、ProductName、快捷方式和安装器是否显示“飞船阅读”。
+2. Ctrl+Win+Alt+Space 第一次是否真正暂停声音，第二次是否继续；连续做 3 至 5 轮。
+3. 选择“争渡读屏语音库”后，ZDSR+F4 是否能切换到“飞船阅读”通道。
+4. 争渡通道是否能稳定朗读、暂停、继续和停止。
+5. Tab 百分比流程、“隐藏功能”页、更新功能彻底移除和大 TXT 性能是否正常。
 
-当前用户配置：
-  engine = sapi5
-  voice = HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices\Tokens\AiSound_XiaoFeng
-
-热键：
-  Ctrl + Windows + Alt + F6
-
-注册：
-  wx.RegisterHotKey
-  modifiers = wx.MOD_CONTROL | wx.MOD_ALT | wx.MOD_WIN | 0x4000
-  0x4000 是 MOD_NOREPEAT，避免按住时快速反复切换。
-
-问题历史：
-1. 用户确认组合键确实触发，并听到“已暂停/已恢复”。
-2. 2026.2.4 仅调用 SPVoice.Pause/Resume，小峰语音会忽略这些调用，因此书籍声音没有停止。
-3. 旧音频流实现可以真正暂停，但恢复前依赖 GetStatus().State == Paused；第三方语音报告状态不可靠，导致“能暂停但恢复不了”。
-
-2026.2.5/2026.2.6 最终实现：
-  有 tts_audio_stream 时：
-    暂停：tts_audio_stream.setState(SPAudioState.Paused, 0)
-    恢复：tts_audio_stream.setState(SPAudioState.Running, 0)
-
-恢复必须无条件设置 Running，不能根据旧 GetStatus 状态决定是否执行。
-没有 tts_audio_stream 的语音才回退到 SPVoice.Pause/Resume。
-
-SapiEventSink 的 StartStream/EndStream 在 paused 时不能覆盖 paused 状态。
-speak_utterance 发出异步 Speak 后（当前不是 paused 时）主动设为 busy。
-
-已使用当前小峰语音执行连续三轮底层音频流探测：
-  每次暂停后状态 = 2（SPAudioState.Paused）
-  每次恢复后状态 = 3（SPAudioState.Running）
-
-关键测试：
-  tests\test_sapi_pause_resume.py
-  tests\test_text_to_speech.py
-
-重要：桌面自动化安全规则禁止自动发送 Windows 键组合，因此最终必须让用户人工听声验收。不能把“已暂停/已恢复”的屏幕阅读器提示当成声音真的停止。
-
-人工验收步骤：
-1. 打开真实测试书并开始朗读。
-2. 按 Ctrl+Win+Alt+F6，书籍声音必须立即停止。
-3. 完整松开四个键。
-4. 再按一次，必须继续朗读。
-5. 连续做 3 至 5 轮。
-
-如果仍失败，记录以下信息：
-  on_global_pause_hotkey 是否到达
-  engine.state 前后值
-  ISpAudio GetStatus().State 前后值
-  setState(Paused/Running) 是否抛出 COMError
-  当前 voice token
+自动化安全规则禁止自动发送包含 Windows 键的组合键。
+不得把屏幕阅读器提示当成真实音频已暂停的证据。
 
 ============================================================
-八、2026.2.5 的“Failed to start Bookworm”退出错误及 2026.2.6 修复
+五、构建命令
 ============================================================
 
-用户看到的信息：
-  Failed to start Bookworm
-  A fatal error has occured...
-  C:\Users\apple007\bookworm.errors.log
+工作目录：D:\Bookworm_Development_Project\Source
 
-实际发生时间在关闭程序时，不是启动时。日志堆栈：
-  TextToSpeechService.shutdown
-  stop_global_pause_hotkey
-  self.view.Unbind
-  RuntimeError: wrapped C/C++ object of type BookViewerWindow has been deleted
-
-根因：
-  wx 已先销毁 BookViewerWindow，服务退出清理仍尝试 Unbind/UnregisterHotKey，异常被启动器统一显示成“Failed to start”。
-
-2026.2.6 修复：
-1. stop_global_pause_hotkey 用 try/except RuntimeError/finally。
-2. 窗口已经销毁时不再抛出致命错误；Windows 会自动释放销毁窗口拥有的热键。
-3. 无论窗口状态如何，finally 都把 _global_pause_hotkey_registered 设为 False。
-4. 新增 test_global_pause_shutdown_tolerates_destroyed_window。
-
-实际安装后验证：
-  2026.2.6 启动成功。
-  使用 Alt+F4 正常关闭。
-  C:\Users\apple007\bookworm.errors.log 的大小和修改时间没有变化。
-  最新应用日志包含：
-    Book viewer was already destroyed while removing hotkey.
-    The application has exited gracefully.
-
-============================================================
-九、构建环境与命令
-============================================================
-
-Python 虚拟环境：
-  Source\.venv
-
-NSIS：
-  Build_Tools\.buildtools\nsis-3.11\nsis-3.11
-
-在归档源码目录打开 PowerShell：
-  D:\Bookworm_Development_Project\Source
-
-设置环境：
+环境：
   $env:PYTHONPATH=(Get-Location).Path
   $env:PATH='D:\Bookworm_Development_Project\Build_Tools\.buildtools\nsis-3.11\nsis-3.11;'+$env:PATH
 
 完整测试：
   .\.venv\Scripts\python.exe -m pytest tests -q
 
-生成版本资源：
+版本资源：
   .\.venv\Scripts\python.exe -m invoke make-version-info-file
 
-冻结程序：
-  在 Source\scripts\builder 目录运行：
+冻结（在 Source\scripts\builder）：
+  $env:PYTHONPATH='D:\Bookworm_Development_Project\Source'
   ..\..\.venv\Scripts\python.exe -m PyInstaller Bookworm.spec --clean -y --distpath dist\x64
 
-复制依赖：
-  回到 Source 目录运行：
+复制依赖（回到 Source）：
   .\.venv\Scripts\python.exe -m invoke copy-deps copy-executables
 
 生成安装包：
   .\.venv\Scripts\python.exe -m invoke make-installer
 
-copy-deps 可能提示旧 Visual Studio 14.0 路径下找不到 msvcp140.dll、vcomp140.dll、vcruntime140.dll。这是已知警告。PyInstaller 已把关键 MSVCP140.dll 和 VCRUNTIME140.dll 放入 _internal，安装后也已验证存在。
+真实大书：
+  D:\Bookworm_Development_Project\Test_Data\176《凡人修仙传》（校对版全本+番外）作者：忘语.txt
 
-静默安装：
-  Start-Process -FilePath '<最新版安装包>' -ArgumentList '/S' -WindowStyle Hidden -Wait
-
-benchmark：
-  C:\Program Files\Bookworm\Bookworm.exe benchmark "D:\Bookworm_Development_Project\Test_Data\176《凡人修仙传》（校对版全本+番外）作者：忘语.txt"
+copy-deps 的旧 Visual Studio 14.0 DLL 路径警告是已知问题；关键 MSVCP140.dll 和 VCRUNTIME140.dll 已由 PyInstaller 放入 _internal。
 
 ============================================================
-十、开发和发布检查清单
+六、安装包规则
 ============================================================
 
-1. 先读本交接说明和最新日志。
-2. 确认 Source\bookworm\app.py 当前版本。
-3. 修改尽量最小，不重构无关功能。
-4. 运行相关测试。
-5. 运行完整测试。
-6. 更新版本号和 version_info。
-7. PyInstaller 重新冻结。
-8. copy-deps、copy-executables。
-9. 用真实大书 benchmark 两次。
-10. make-installer。
-11. 校验安装包 FileVersion/ProductVersion、大小和 SHA-256。
-12. 静默覆盖安装。
-13. 验证安装版本和注册表 DisplayVersion。
-14. 启动并正常关闭，确认没有新增 bookworm.errors.log。
-15. 人工验证 Tab 百分比流程。
-16. 人工验证 Ctrl+Win+Alt+F6 实际声音暂停和恢复。
-17. 将最终源码、日志、配置同步回 D:\Bookworm_Development_Project。
-18. Latest_Installer 中只放一个最新安装包。
-19. 确认新版正常后，永久删除所有旧版安装包。
-20. 更新本交接说明中的版本、哈希、测试结果和待验证事项。
+1. D 盘最终只保留一个最新安装包。
+2. 当前用户要求最终包放在 D:\ 根目录。
+3. 新包完成构建、测试、哈希和版本验证后才能删除旧包。
+4. 删除前必须精确核对路径；不得删除源码、日志、配置、语音库、原始源码或测试书。
+5. 上一轮“晨钟暮鼓阅读”安装包已永久删除，未保留备份。
 
 ============================================================
-十一、绝对不要回退的关键点
+七、GitHub 公开源码仓库
+============================================================
+
+仓库：https://github.com/y521wan-coder/Bookworm
+分支：main
+origin：git@github.com:y521wan-coder/Bookworm.git
+upstream：https://github.com/blindpandas/bookworm.git
+
+必须使用本项目专用 SSH 配置，不得输出、复制或上传私钥内容。
+不得上传 Build_Tools、Config、Latest_Installer、Logs、Original_Source、Test_Data、Voice_Library、private、.venv、build、dist、安装包、日志、数据库或用户配置。
+.gitignore 已包含 scripts/*-setup.exe，防止改名安装包被误上传。
+
+============================================================
+八、绝对不要回退
 ============================================================
 
 1. 不要恢复大 TXT 单页加载。
-2. 不要在每次 EVT_SLIDER 变化时立即跳页或朗读。
-3. 不要把 wx.CallLater 的 delay 改回 0。
+2. 不要在滑块每变化 1% 时立即跳转或朗读。
+3. 不要把 wx.CallLater 延迟改为 0。
 4. 不要让后台进度覆盖 _pending_slider_percentage。
-5. 不要把热键改回单独 F6。
-6. 不要改回只调用 SPVoice.Pause/Resume；小峰语音不会真实停止。
-7. 不要在恢复前用不可靠的 GetStatus 状态阻止 SetState(Running)。
-8. 不要让迟到的 StartStream/EndStream 覆盖 paused 状态。
-9. 不要删除旧内容哈希和旧阅读位置迁移逻辑。
-10. 不要在 wx 窗口已经销毁时让热键清理异常传播。
-11. 不要保留旧版安装包。
+5. 全局热键必须保持 Ctrl+Win+Alt+Space。
+6. 不要改回只调用 SPVoice.Pause/Resume，不要用 GetStatus 阻止 SetState(Running)。
+7. 不要让 StartStream/EndStream 覆盖 paused。
+8. 争渡通道名必须保持“飞船阅读”。
+9. 不要恢复 otau/updater 或任何更新入口。
+10. 不要恢复普通菜单的帮助、网络服务和书架入口。
+11. 不要使用 hidden_features 图标名。
+12. 不要删除旧内容哈希和旧阅读位置迁移逻辑。
+13. 不要保留旧安装包或重复副本。
 
 ============================================================
-十二、新会话开场指令（可直接复制）
+九、新会话开场指令
 ============================================================
 
-请先完整阅读 D:\Bookworm_Development_Project\交接说明.txt，再继续开发 D:\Bookworm_Development_Project\Source。当前源码和本机安装版本为 2026.2.6。归档 Latest_Installer 中只允许保留一个最新安装包；新版验证成功后必须永久删除所有旧安装包。先检查 2026.2.6 的人工验收结果：Ctrl+Windows+Alt+F6 是否真正停止并恢复小峰 SAPI 的书籍声音，以及 Tab->方向键调整百分比->Tab 是否跳转并开始朗读。不要根据“已暂停/已恢复”提示判断音频成功，要以实际书籍声音和 ISpAudio 状态为准。修改后运行相关测试和完整测试，用《凡人修仙传》做 benchmark，生成新版本安装包，覆盖安装，验证启动和正常退出，再同步归档和更新本交接说明。
-
-============================================================
-十三、当前仍需用户人工确认的事项
-============================================================
-
-1. 2026.2.6 中 Ctrl+Win+Alt+F6 第一次是否真实停止书籍声音。
-2. 完整松开按键后第二次是否真实恢复。
-3. 连续 3 至 5 轮是否稳定。
-4. Tab 百分比流程在用户屏幕阅读器环境中是否完全符合预期。
-
-自动验证、底层 ISpAudio 状态验证和退出修复验证均已完成；以上四项需要用户亲耳和实际键盘操作确认。
-
-============================================================
-十四、GitHub 公开源码备份（2026-11-17）
-============================================================
-
-GitHub 仓库：
-  https://github.com/y521wan-coder/Bookworm
-
-可见性：公开（任何人均可查看源码）
-仓库类型：从 blindpandas/bookworm 建立的公开 Fork，用于保留完整上游历史
-默认分支：main
-
-Git 远端：
-  origin = git@github.com:y521wan-coder/Bookworm.git
-  upstream = https://github.com/blindpandas/bookworm.git
-
-上游基线核对：
-1. Original_Source\bookworm-2026.2-original.zip 已与上游正式标签 2026.2 逐文件核对 Git Blob 哈希。
-2. 压缩包和标签各包含 818 个文件，差异为 0。
-3. 上游 2026.2 标签目标提交：
-     ebc4763282850c35475ac40bed13cb8308266aa5
-
-Bookworm 2026.2.6 正式源码提交：
-  807668aa5d96ac3b63ae8ca562a4afc3128095ac
-
-正式版本注释标签：
-  v2026.2.6 -> 807668aa5d96ac3b63ae8ca562a4afc3128095ac
-
-标签对象：
-  62105fb5f9d78c15024cd9108a7a3d0cb60acf68
-
-交接说明更新前，本地和远端 main HEAD：
-  bab532413231b3cbfc952190e85f626ba2d6ae39
-
-当时 main 可达提交数量：1353
-本节提交后 main 可达提交数量：1354
-被 Git 跟踪的文件数量：825
-
-仓库专用上传密钥（不要输出或复制私钥内容）：
-  私钥：D:\Bookworm_Development_Project\private\github\bookworm_github_ed25519
-  公钥：D:\Bookworm_Development_Project\private\github\bookworm_github_ed25519.pub
-  SSH 配置：D:\Bookworm_Development_Project\private\github\bookworm_ssh_config
-  GitHub 主机密钥文件：D:\Bookworm_Development_Project\private\github\github_known_hosts
-
-Deploy Key 名称：Bookworm repository deploy key
-权限：只属于本仓库，已开启写入权限
-密钥指纹：
-  SHA256:xF3pZcg+cYcMQaksPsT6IsHhVRfLiyt87eoAjqlaTdY
-
-GitHub 官方 ED25519 主机密钥指纹：
-  SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU
-
-安全检查：
-1. 使用官方 Gitleaks 8.30.1 扫描正式源码树 f6aceb55958353e039c54e3814d69c0bb7b91f72，共扫描 28,008,738 字节，发现 0 个凭证泄漏。
-2. GitHub Secret Scanning 已扫描远端完整历史：开放结果 0、已关闭结果 0，未发现密钥。
-3. 由于本地仓库采用部分克隆且网络下载历史对象较慢，本地 Gitleaks 全历史扫描没有完成；远端完整历史由 GitHub 服务器端 Secret Scanning 完成复核。
-4. 已检查远端 main，未发现 private、.env、PEM、SSH 私钥、Bookworm 安装包、日志、数据库、用户配置、测试书或语音库。
-5. private 目录和仓库专用密钥均被 .gitignore 排除，未被 Git 跟踪或上传。
-
-Git 排除范围：
-  Build_Tools、Config、Latest_Installer、Logs、Original_Source、Test_Data、Voice_Library、private，
-  以及 Source 中的 .venv、应用数据、缓存、build、dist、日志、生成目录和 Bookworm 构建产物。
-
-上游源码原本跟踪的必要构建/运行依赖继续保留，包括 packages 中的 ZIP、WHL、DLL，
-以及 antiword.exe、bootstrap.exe 等辅助程序；这些不是 Bookworm 安装包、用户数据或本次生成的构建产物。
-
-临时扫描工具、扫描报告、临时克隆、辅助脚本和中断下载产生的临时对象均已清理。
-创建 Fork 前使用的空占位仓库 Bookworm-upload-placeholder 已删除。
-
-本次仅完成 Git/GitHub 源码备份和文档更新，没有修改软件功能，也没有重新构建、安装或运行测试。
-以后从本目录推送时继续使用 origin 和本项目专用 SSH 配置，不要复用其他项目的上传密钥。
+请先完整阅读 D:\Bookworm_Development_Project\交接说明.txt，再修改 D:\Bookworm_Development_Project\Source。当前源码和 D:\飞船阅读-2026.2.6-x64-setup.exe 版本为 2026.2.6，显示名为“飞船阅读”，争渡命名独立通道也严格叫“飞船阅读”，全局暂停/继续热键是 Ctrl+Win+Alt+Space。用户尚未安装新包，C:\Program Files\Bookworm 当前仍是上一轮“晨钟暮鼓阅读”内核。自动更新、手动检测更新和更新日志必须彻底不存在。不要上传安装包、私钥、配置、日志或用户数据。

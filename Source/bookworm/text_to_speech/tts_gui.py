@@ -578,7 +578,7 @@ class SpeechMenu(wx.Menu):
         self.Append(
             StatefulSpeechMenuIds.pauseToggle,
             # Translators: the label of an item in the application menubar
-            _("Pa&use/Resume\tCtrl+Win+Alt+F6"),
+            _("Pa&use/Resume\tCtrl+Win+Alt+F6").replace("F6", "Space"),
             # Translators: the help text of an item in the application menubar
             _("Pause/Resume reading aloud"),
         )

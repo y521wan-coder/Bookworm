@@ -120,6 +120,7 @@ scripts/builder/assets/bookworm-logo.bmp
 scripts/builder/assets/bookworm.bmp
 scripts/builder/assets/bookworm.ico
 scripts/Bookworm*.exe
+scripts/*-setup.exe
 scripts/Bookworm*.bundle
 scripts/Bookworm*.zip
 scripts/release-info.json
