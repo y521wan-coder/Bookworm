@@ -108,7 +108,23 @@ class TextToSpeechService(BookwormService):
         app_started.connect(self._on_app_started)
         self.initialize_state()
 
+    _pause_on_speech_start = False
+    _paused_bookmarks = None
+
+    @property
+    def is_reading(self):
+        return getattr(self, "_requested_play", False)
+
+    @property
+    def _reading_paused(self):
+        return (
+            self._paused_bookmarks is not None
+            or self._pause_on_speech_start
+            or (self.is_engine_ready and self.engine.state is SynthState.paused)
+        )
+
     def initialize_state(self):
+        self._paused_bookmarks = None
         self._speech_session = getattr(self, "_speech_session", 0) + 1
         self._pause_on_speech_start = False
         self.utterance_queue = deque()
@@ -287,54 +303,46 @@ class TextToSpeechService(BookwormService):
             wx.Bell()
             return
         state = self.engine.state
-        if state is SynthState.busy:
+        if self._reading_paused:
+            self._resume_reading()
+        elif state is SynthState.busy or self.is_reading:
             wx.Bell()
-            return
-        if state is SynthState.paused:
-            self._pause_on_speech_start = False
+        else:
+            self._requested_play = True
+            self.speak_page()
+
+    def _resume_reading(self):
+        paused_engine = self._paused_bookmarks is not None and not self._pause_on_speech_start
+        self._pause_on_speech_start = False
+        if paused_engine or self.engine.state is SynthState.paused:
             self.engine.resume()
-            # Translators: a message that is announced when the speech is resumed
-            speech.announce(_("Resumed"))
-            return
-        if getattr(self, "_requested_play", False):
-            if self._pause_on_speech_start:
-                self._pause_on_speech_start = False
-                if self.engine.state is SynthState.paused:
-                    self.engine.resume()
-                # Translators: a message that is announced when the speech is resumed
-                speech.announce(_("Resumed"))
-            else:
-                wx.Bell()
-            return
-        setattr(self, "_requested_play", True)
-        self.speak_page()
+        bookmarks = self._paused_bookmarks
+        self._paused_bookmarks = None
+        if bookmarks:
+            for bookmark in bookmarks:
+                self._apply_bookmark(bookmark)
+        # Translators: a message that is announced when the speech is resumed
+        speech.announce(_("Resumed"))
 
     def pause_or_resume(self):
         if not self.is_engine_ready:
             wx.Bell()
             return
         state = self.engine.state
-        if state is SynthState.busy:
-            self.engine.pause()
-            # Translators: a message that is announced when the speech is paused
-            speech.announce(_("Paused"))
-        elif state is SynthState.paused:
-            self._pause_on_speech_start = False
-            self.engine.resume()
-            # Translators: a message that is announced when the speech is resumed
-            speech.announce(_("Resumed"))
-        elif getattr(self, "_requested_play", False):
-            pause_requested = not self._pause_on_speech_start
-            self._pause_on_speech_start = pause_requested
-            if pause_requested and self.engine.state is SynthState.busy:
+        if self._reading_paused:
+            self._resume_reading()
+        elif state is SynthState.busy or self.is_reading:
+            # Hold GUI callbacks even if the engine becomes idle between units.
+            self._paused_bookmarks = deque()
+            self._pause_on_speech_start = True
+            if self.engine.state is SynthState.busy:
                 self._pause_on_speech_start = False
-                self.engine.pause()
-            elif (
-                not pause_requested and self.engine.state is SynthState.paused
-            ):
-                self.engine.resume()
-            # Translators: a message announced when pending speech is paused or resumed
-            speech.announce(_("Paused") if pause_requested else _("Resumed"))
+                try:
+                    self.engine.pause()
+                except Exception:
+                    self._paused_bookmarks = None
+                    raise
+            speech.announce(_("Paused"))
         else:
             self.play_or_resume()
 
@@ -363,9 +371,7 @@ class TextToSpeechService(BookwormService):
         was_reading = previous_state is not SynthState.ready or getattr(
             self, "_requested_play", False
         )
-        was_paused = previous_state is SynthState.paused or getattr(
-            self, "_pause_on_speech_start", False
-        )
+        was_paused = self._reading_paused
         text_info = self.text_info
         if not forward:
             if self._whole_page_text_info is None:
@@ -413,9 +419,7 @@ class TextToSpeechService(BookwormService):
     def on_restart_speech(self, sender, start_speech_from, speech_prefix=None):
         if not self.is_engine_ready or not getattr(self, "_requested_play", False):
             return
-        was_paused = self.engine.state is SynthState.paused or getattr(
-            self, "_pause_on_speech_start", False
-        )
+        was_paused = self._reading_paused
         self.stop_speech()
         if speech_prefix:
             with self.queue_speech_utterance() as utterance:
@@ -432,9 +436,7 @@ class TextToSpeechService(BookwormService):
         if not self.is_engine_ready:
             return
         previous_state = self.engine.state
-        was_paused = previous_state is SynthState.paused or getattr(
-            self, "_pause_on_speech_start", False
-        )
+        was_paused = self._reading_paused
         if previous_state is not SynthState.ready or getattr(
             self, "_requested_play", False
         ):
@@ -598,6 +600,15 @@ class TextToSpeechService(BookwormService):
     def process_bookmark(self, bookmark):
         if bookmark.get("s") != self._speech_session:
             return
+        if self._paused_bookmarks is not None:
+            self._paused_bookmarks.append(bookmark)
+            return
+        self._apply_bookmark(bookmark)
+
+    def _apply_bookmark(self, bookmark):
+        # A page-end bookmark can start a new session during resume.
+        if bookmark.get("s") != self._speech_session:
+            return
         bookmark_type = bookmark["t"]
         if bookmark_type == UT_END:
             self._fill_utterance_queue()
@@ -650,9 +661,7 @@ class TextToSpeechService(BookwormService):
         was_reading = last_known_state is not SynthState.ready or getattr(
             self, "_requested_play", False
         )
-        was_paused = last_known_state is SynthState.paused or getattr(
-            self, "_pause_on_speech_start", False
-        )
+        was_paused = self._reading_paused
         reuse_engine = self.is_engine_ready and self.engine.name == engine_name
         if not reuse_engine:
             # Close any currently active engine before initializing a new one.
@@ -804,9 +813,7 @@ class TextToSpeechService(BookwormService):
                     sender, start_speech_from=position, speech_prefix=tts_speech_prefix
                 )
         if kwargs.get("start_reading") and (
-            not was_requested
-            or getattr(self, "_pause_on_speech_start", False)
-            or (self.is_engine_ready and self.engine.state is SynthState.paused)
+            not was_requested or self._reading_paused
         ):
             self.play_or_resume()
 
@@ -815,6 +822,8 @@ class TextToSpeechService(BookwormService):
         self.on_engine_state_changed(state)
         if state is SynthState.busy and self._pause_on_speech_start:
             self._pause_on_speech_start = False
+            if self._paused_bookmarks is None:
+                self._paused_bookmarks = deque()
             self.engine.pause()
 
     def on_bookmark_reached(self, sender, bookmark):

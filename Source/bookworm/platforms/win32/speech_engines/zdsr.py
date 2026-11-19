@@ -331,24 +331,32 @@ class ZdsrSpeechEngine(BaseSpeechEngine):
             if result != ZDSR_NOT_READY or time.monotonic() >= deadline:
                 raise ZdsrError("Speak", result)
             time.sleep(POLL_INTERVAL_SECONDS)
-        idle_seen = False
+        speech_started = False
+        start_deadline = time.monotonic() + 3.0
         while self._is_current(generation):
             with self._lock:
                 if not self._is_current(generation) or self.state is SynthState.paused:
                     return False
+                # A full pause/resume can occur between polls. StopSpeak
+                # discarded this sentence even if the state is already busy.
+                if not self._owns_speech:
+                    return False
                 status = self._get_speak_state()
                 if not self._is_current(generation) or self.state is SynthState.paused:
                     return False
-                # Speak is asynchronous: the first query can still report the
-                # preceding idle state. Confirm idle on a subsequent poll before
-                # emitting bookmarks or starting the next paragraph.
+                # Speak is asynchronous. The DLL can report the preceding idle
+                # state for several polls before it starts this item. Advancing
+                # on an arbitrary number of idle polls makes bookmarks and page
+                # turns run ahead of audible speech, and a later StopSpeak then
+                # discards text that was still queued in the channel.
                 if status == ZDSR_STATE_IDLE:
-                    if idle_seen:
+                    if speech_started:
                         self._owns_speech = False
                         return True
-                    idle_seen = True
+                    if time.monotonic() >= start_deadline:
+                        raise ZdsrError("speech start timeout", status)
                 elif status == ZDSR_STATE_SPEAKING:
-                    idle_seen = False
+                    speech_started = True
                 else:
                     raise ZdsrError("GetSpeakState", status)
             time.sleep(POLL_INTERVAL_SECONDS)

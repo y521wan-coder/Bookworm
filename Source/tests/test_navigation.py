@@ -1,11 +1,13 @@
 import sys
 from types import SimpleNamespace
+from unittest.mock import Mock
 
 import pytest
 
 from bookworm.document import SINGLE_PAGE_DOCUMENT_PAGER, Section
 from bookworm.gui import book_viewer
 from bookworm.gui.book_viewer import BookViewerWindow
+from bookworm.gui.book_viewer.navigation import NavigationProvider
 from bookworm.gui.book_viewer.position_mapping import TextCtrlPositionMap
 from bookworm.gui.contentview_ctrl import ContentViewCtrl
 from bookworm.gui.text_ctrl_mixin import ContentViewCtrlMixin
@@ -18,6 +20,36 @@ if sys.platform == "win32":
 
 class StructuralNavigationHarness:
     navigate_to_structural_element = BookViewerWindow.navigate_to_structural_element
+
+
+@pytest.mark.parametrize(
+    ("modifiers", "expected_page_turns"),
+    [
+        (0, 1),
+        (book_viewer.wx.MOD_CONTROL | book_viewer.wx.MOD_ALT | book_viewer.wx.MOD_WIN, 0),
+    ],
+)
+def test_modified_space_does_not_navigate_to_next_page(
+    modifiers, expected_page_turns
+):
+    provider = object.__new__(NavigationProvider)
+    provider._nav_ctrl = object()
+    provider.callback_func = Mock()
+    provider.zoom_callback = None
+    provider.reader = SimpleNamespace(
+        ready=True,
+        document=SimpleNamespace(supports_links=lambda: False),
+        go_to_next=Mock(),
+        go_to_prev=Mock(),
+    )
+    event = Mock()
+    event.GetKeyCode.return_value = book_viewer.wx.WXK_SPACE
+    event.GetModifiers.return_value = modifiers
+
+    provider.onKeyUp(event)
+
+    assert provider.reader.go_to_next.call_count == expected_page_turns
+    assert provider.callback_func.call_count == expected_page_turns
 
 
 class PositionMappingHarness:

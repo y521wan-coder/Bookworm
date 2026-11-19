@@ -68,7 +68,7 @@ class SapiEventSink(object):
             log.warning(
                 "Called StartStream method on SapiSink while the synthesizer is dead"
             )
-        else:
+        elif streamNum == synth._current_stream:
             synth._stream_received_bookmarks.clear()
             if synth.state is not SynthState.paused:
                 synth._set_state(SynthState.busy)
@@ -78,6 +78,8 @@ class SapiEventSink(object):
             log.warning(
                 "Called Bookmark method on SapiSink while the synthesizer is dead"
             )
+            return
+        if streamNum != synth._current_stream:
             return
         synth._stream_received_bookmarks.add(bookmark)
         if not process_audio_bookmark(bookmark):
@@ -89,7 +91,7 @@ class SapiEventSink(object):
             log.warning(
                 "Called stream end method on EndStream while the synthesizer is dead"
             )
-        else:
+        elif streamNum == synth._current_stream:
             if synth.state is not SynthState.paused:
                 synth._set_state(SynthState.ready)
             synth._recover_missing_bookmarks()
@@ -115,6 +117,7 @@ class SapiSpeechEngine(BaseSpeechEngine):
         self.__state = SynthState.ready
         self.event_handlers = {}
         self._voice_token = None
+        self._current_stream = None
         self._current_utterance = None
         self._stream_received_bookmarks = set()
         self._bookmark_fallback_reported = False
@@ -124,6 +127,7 @@ class SapiSpeechEngine(BaseSpeechEngine):
     def close(self):
         self._events_connection = None
         self._tts = None
+        self._current_stream = None
         self._current_utterance = None
         self._stream_received_bookmarks.clear()
         super().close()
@@ -205,16 +209,18 @@ class SapiSpeechEngine(BaseSpeechEngine):
         return voice_utterance
 
     def speak_utterance(self, utterance):
-        self._current_utterance = utterance
         sapi_xml = sapi_speech_converter.convert(utterance, localeinfo=None)
         flags = SpeechVoiceSpeakFlags.IsXML | SpeechVoiceSpeakFlags.Async
-        self.tts.Speak(sapi_xml, flags)
+        self._current_stream = self.tts.Speak(sapi_xml, flags)
+        self._current_utterance = utterance
+        self._stream_received_bookmarks.clear()
         if self.state is not SynthState.paused:
             self._set_state(SynthState.busy)
 
     def stop(self):
         if self.state is SynthState.paused:
             self.resume()
+        self._current_stream = None
         self._current_utterance = None
         self._stream_received_bookmarks.clear()
         self.tts.Speak(

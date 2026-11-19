@@ -55,15 +55,22 @@ class NavigationProvider:
         }:
             self._auto_navigate(event, key_code)
         elif key_code in NAVIGATION_KEYS:
+            modifiers = event.GetModifiers()
             if key_code in NAV_FOREWORD_KEYS:
                 if self.reader.document.supports_links():
-                    modifiers = event.GetModifiers()
                     if modifiers == wx.MOD_CONTROL:
                         self.try_handle_special_actions()
                         return
                     elif modifiers == wx.MOD_CONTROL | wx.MOD_SHIFT:
                         self.reader.pop_navigation_stack()
                         return
+            # Space, Enter and Backspace are page-navigation commands only
+            # when pressed on their own. In particular, the global speech
+            # hotkey ends in Space and its key-up event also reaches the
+            # focused text control when the main window is in the foreground.
+            if modifiers:
+                return
+            if key_code in NAV_FOREWORD_KEYS:
                 self.reader.go_to_next()
             elif key_code in NAV_BACKWORD_KEYS:
                 self.reader.go_to_prev()

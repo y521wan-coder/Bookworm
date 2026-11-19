@@ -24,6 +24,7 @@ def test_repeated_pause_resume_survives_delayed_stream_events():
     engine.event_handlers = {}
     engine.tts = Mock()
     engine.tts_audio_stream = StrictAudioStream()
+    engine._current_stream = 1
     engine._stream_received_bookmarks = set()
     engine._recover_missing_bookmarks = Mock()
     engine._set_state(SynthState.busy)
@@ -52,6 +53,7 @@ def test_pause_state_is_visible_to_stream_events_before_audio_call():
     engine = object.__new__(SapiSpeechEngine)
     engine.event_handlers = {}
     engine.tts = Mock()
+    engine._current_stream = 1
     engine._stream_received_bookmarks = set()
     engine._recover_missing_bookmarks = Mock()
     engine._set_state(SynthState.busy)
@@ -67,3 +69,20 @@ def test_pause_state_is_visible_to_stream_events_before_audio_call():
     engine.pause()
 
     assert engine.state is SynthState.paused
+
+def test_previous_stream_end_cannot_advance_current_paragraph():
+    engine = object.__new__(SapiSpeechEngine)
+    engine.event_handlers = {}
+    engine._current_stream = 2
+    engine._stream_received_bookmarks = {"current"}
+    engine._recover_missing_bookmarks = Mock()
+    engine._set_state(SynthState.busy)
+    sink = SapiEventSink(weakref.ref(engine))
+    sink.StartStream(1, 0)
+    sink.Bookmark(1, 0, "old", 0)
+    sink.EndStream(1, 0)
+    assert engine.state is SynthState.busy
+    assert engine._stream_received_bookmarks == {"current"}
+    engine._recover_missing_bookmarks.assert_not_called()
+    sink.EndStream(2, 0)
+    engine._recover_missing_bookmarks.assert_called_once_with()

@@ -455,3 +455,50 @@ def test_active_voice_profile_updates_its_speech_settings():
 
     assert manager["engine"] == "sapi5"
     assert "engine" not in manager.active_profile
+
+@pytest.mark.parametrize("resume", ["pause_or_resume", "play_or_resume"])
+def test_pause_holds_queued_bookmarks_until_explicit_resume(monkeypatch, resume):
+    service = object.__new__(tts.TextToSpeechService)
+    service.engine = Mock(state=tts.SynthState.busy)
+    service.view = Mock()
+    service.reader = Mock()
+    service._highlighted_ranges = set()
+    service.initialize_state()
+    service._requested_play = True
+    service.speak_page = Mock()
+    service.utterance_queue.append("next")
+    service.reader.go_to_next.side_effect = lambda: service.initialize_state() or True
+    monkeypatch.setattr(tts.speech, "announce", Mock())
+    monkeypatch.setattr(tts.should_auto_navigate_to_next_page, "send", lambda _: [])
+    monkeypatch.setattr(tts.config, "conf", {"reading": {"reading_mode": 0}})
+    service.pause_or_resume()
+    # A delayed ready callback can arrive while the window is in the background.
+    service.engine.state = tts.SynthState.ready
+    for kind in (tts.UT_PAGE_END, tts.UT_END):
+        tts.TextToSpeechService.process_bookmark.__wrapped__(
+            service, current_bookmark(service, t=kind, isl=False)
+        )
+    service.reader.go_to_next.assert_not_called()
+    service.engine.speak.assert_not_called()
+    getattr(service, resume)()
+    service.reader.go_to_next.assert_called_once_with()
+    service.engine.speak.assert_not_called()
+    service.speak_page.assert_not_called()
+
+@pytest.mark.parametrize("tts_reading", [True, False])
+def test_caret_at_page_end_only_turns_page_for_independent_reader(monkeypatch, tts_reading):
+    from bookworm.gui import book_viewer
+
+    view = Mock()
+    view.reader.ready = True
+    view.contentTextCtrl.GetLastPosition.return_value = 50
+    view._last_page_turn_time = 0
+    app = Mock()
+    app.service_handler.get_service.return_value.is_reading = tts_reading
+    monkeypatch.setattr(book_viewer.wx, "GetApp", lambda: app)
+    monkeypatch.setattr(book_viewer.wx, "CallAfter", Mock())
+    monkeypatch.setattr(book_viewer.threaded_worker, "submit", Mock())
+    monkeypatch.setattr(book_viewer.config, "conf", {"general": {"use_continuous_reading": True}})
+    monkeypatch.setattr(book_viewer.should_auto_navigate_to_next_page, "send", lambda _: [])
+    book_viewer.BookViewerWindow.onCaretMoved(view, Mock(Position=50))
+    assert view.reader.go_to_next.call_count == int(not tts_reading)

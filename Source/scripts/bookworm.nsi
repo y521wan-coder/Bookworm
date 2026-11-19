@@ -1,4 +1,4 @@
-!include "MUI2.nsh"
+﻿!include "MUI2.nsh"
 !include "LogicLib.nsh"
 !include "x64.nsh"
 Unicode true
@@ -6,6 +6,7 @@ CRCCheck on
 ManifestSupportedOS all
 XPStyle on
 Name "$%IAPP_DISPLAY_NAME%"
+BrandingText "$%IAPP_DISPLAY_NAME% $%IAPP_VERSION%"
 OutFile "$%IAPP_DISPLAY_NAME%-$%IAPP_VERSION%-$%IAPP_ARCH%-setup.exe"
 InstallDir "$PROGRAMFILES\Bookworm"
 InstallDirRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$%IAPP_NAME%" "InstallLocation"
@@ -14,6 +15,7 @@ SetCompress auto
 SetCompressor /solid lzma
 SetDatablockOptimize on
 VIAddVersionKey ProductName "$%IAPP_DISPLAY_NAME%"
+VIAddVersionKey FileDescription "$%IAPP_DISPLAY_NAME%安装程序"
 VIAddVersionKey LegalCopyright "$%IAPP_COPYRIGHT%"
 VIAddVersionKey ProductVersion "$%IAPP_VERSION%"
 VIAddVersionKey FileVersion "$%IAPP_VERSION%"
@@ -25,14 +27,12 @@ VIFileVersion "$%IAPP_VERSION_EX%"
 !define MUI_HEADERIMAGE_BITMAP_NOSTRETCH
 !define MUI_WELCOMEFINISHPAGE_BITMAP "builder\assets\$%IAPP_NAME%-logo.bmp"
 !define MUI_ABORTWARNING
-!define MUI_FINISHPAGE_LINK "$%IAPP_WEBSITE%"
-!define MUI_FINISHPAGE_LINK_LOCATION $%IAPP_WEBSITE%
 # Variables to store old version info
 Var /GLOBAL OldInstallPath
 Var /GLOBAL OldVersionFound
 !insertmacro MUI_PAGE_WELCOME
 !define MUI_LICENSEPAGE_RADIOBUTTONS
-!insertmacro MUI_PAGE_LICENSE "..\LICENSE"
+!insertmacro MUI_PAGE_LICENSE "license-zh_CN.txt"
 !insertmacro MUI_PAGE_DIRECTORY
 var StartMenuFolder
 !insertmacro MUI_PAGE_STARTMENU startmenu $StartMenuFolder
@@ -41,40 +41,28 @@ var StartMenuFolder
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_LANGUAGE "English"
-!insertmacro MUI_LANGUAGE "Arabic"
-!insertmacro MUI_LANGUAGE "Bulgarian"
-!insertmacro MUI_LANGUAGE "Finnish"
-!insertmacro MUI_LANGUAGE "French"
-!insertmacro MUI_LANGUAGE "Italian"
-!insertmacro MUI_LANGUAGE "PortugueseBR"
-!insertmacro MUI_LANGUAGE "Spanish"
 !insertmacro MUI_LANGUAGE "SimpChinese"
-!insertmacro MUI_LANGUAGE "Japanese"
-!insertmacro MUI_LANGUAGE "Russian"
-!insertmacro MUI_LANGUAGE "Turkish"
-!insertmacro MUI_LANGUAGE "Ukrainian"
-!insertmacro MUI_RESERVEFILE_LANGDLL
 Section
   ${If} $OldVersionFound == 1
-    DetailPrint "Previous version detected. Uninstalling..."
+    DetailPrint "检测到旧版本，正在卸载……"
         # Kill the old running process if it exists
     IfFileExists "$OldInstallPath\Bookworm.exe" 0 +2
       ExecWait '"$OldInstallPath\Bookworm.exe" kill-other-instances'
           # Set the working directory and execute the old uninstaller
     SetOutPath "$OldInstallPath"
     ExecWait '"$OldInstallPath\Uninstall.exe" /S _?=$OldInstallPath'
-    DetailPrint "Previous version has been uninstalled."
+    DetailPrint "旧版本已卸载。"
   ${EndIf}
 SetShellVarContext All
 SetOutPath "$INSTDIR"
 File /r "$%IAPP_FROZEN_DIRECTORY%\*"
-CreateShortCut "$DESKTOP\$%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\$%IAPP_NAME%.exe" "" "" "" SW_SHOWNORMAL "" "$%IAPP_DESCRIPTION% from $%IAPP_AUTHOR% ($%IAPP_WEBSITE%)"
+File /oname=LICENSE.txt "..\LICENSE"
+CreateShortCut "$DESKTOP\$%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\$%IAPP_NAME%.exe" "" "" "" SW_SHOWNORMAL "" "无障碍文档阅读器"
 !insertmacro MUI_STARTMENU_WRITE_BEGIN startmenu
 CreateDirectory "$SMPROGRAMS\$StartMenuFolder"
 CreateShortCut "$SMPROGRAMS\$StartMenuFolder\$%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\$%IAPP_NAME%.exe"
-CreateShortCut "$SMPROGRAMS\$StartMenuFolder\$%IAPP_DISPLAY_NAME% English User Guide.lnk" "$INSTDIR\resources\userguide\en\$%IAPP_NAME%.html"
-CreateShortCut "$SMPROGRAMS\$StartMenuFolder\Uninstall $%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\Uninstall.exe"
+CreateShortCut "$SMPROGRAMS\$StartMenuFolder\$%IAPP_DISPLAY_NAME% 用户指南.lnk" "$INSTDIR\_internal\resources\userguide\zh_CN\$%IAPP_NAME%.html"
+CreateShortCut "$SMPROGRAMS\$StartMenuFolder\卸载$%IAPP_DISPLAY_NAME%.lnk" "$INSTDIR\Uninstall.exe"
 !insertmacro MUI_STARTMENU_WRITE_END
 WriteUninstaller "$INSTDIR\Uninstall.exe"
 WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\$%IAPP_NAME%" "DisplayName" "$%IAPP_DISPLAY_NAME% -  $%IAPP_DESCRIPTION%"
@@ -99,7 +87,7 @@ RMDir /r "$SMPROGRAMS\$StartMenuFolder"
 SectionEnd
 
 Function .onInit
-  !insertmacro MUI_LANGDLL_DISPLAY
+  StrCpy $LANGUAGE ${LANG_SIMPCHINESE}
 
   # Set registry view for checking old version and for the new install
   ${If} $%IAPP_ARCH% == "x64"
@@ -129,7 +117,7 @@ done:
 FunctionEnd
 
 Function un.onInit
-!insertmacro MUI_LANGDLL_DISPLAY
+StrCpy $LANGUAGE ${LANG_SIMPCHINESE}
 StrCmp $%IAPP_ARCH% "x64" +1 +2
   SetRegView 64
 IfFileExists "$INSTDIR\Bookworm.exe" 0 +2

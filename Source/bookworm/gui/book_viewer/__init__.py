@@ -609,7 +609,10 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
             config.conf["general"]["use_continuous_reading"]
             and event.Position == self.contentTextCtrl.GetLastPosition()
         ):
-            should_navigate = all(
+            # TTS owns page turns while reading, including during a pause.
+            # Its selection/highlighting can move the caret to the page end.
+            tts_service = wx.GetApp().service_handler.get_service("text_to_speech")
+            should_navigate = not (tts_service and tts_service.is_reading) and all(
                 retval for _, retval in should_auto_navigate_to_next_page.send(self)
             )
             if should_navigate:

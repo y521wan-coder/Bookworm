@@ -11,9 +11,22 @@ from bookworm.speechdriver.utterance import SpeechUtterance
 class FakeApi:
     def __init__(self):
         self.InitTTS = Mock(return_value=0)
-        self.Speak = Mock(return_value=0)
-        self.GetSpeakState = Mock(return_value=zdsr.ZDSR_STATE_IDLE)
+        self._speech_states = []
+        self.Speak = Mock(side_effect=self._speak)
+        self.GetSpeakState = Mock(side_effect=self._get_speak_state)
         self.StopSpeak = Mock()
+
+    def _speak(self, _text, _interrupt):
+        self._speech_states[:] = [
+            zdsr.ZDSR_STATE_SPEAKING,
+            zdsr.ZDSR_STATE_IDLE,
+        ]
+        return 0
+
+    def _get_speak_state(self):
+        if self._speech_states:
+            return self._speech_states.pop(0)
+        return zdsr.ZDSR_STATE_IDLE
 
 
 @pytest.fixture
@@ -156,11 +169,11 @@ def test_zdsr_exposes_current_configured_voice(engine):
     assert voice.display_name == "争渡当前语音"
 
 
-def test_zdsr_initial_idle_does_not_advance_to_next_sentence(engine, monkeypatch):
+def test_zdsr_repeated_initial_idle_does_not_advance_to_next_sentence(engine, monkeypatch):
     instance, api = engine
     instance._set_state(SynthState.busy)
     # Real DLL trace: Speak succeeds, then idle precedes speaking.
-    states = iter([4, 3, 3, 4, 4])
+    states = iter([4, 4, 4, 3, 3, 4])
     observed = []
     def state():
         value = next(states)
@@ -169,8 +182,35 @@ def test_zdsr_initial_idle_does_not_advance_to_next_sentence(engine, monkeypatch
     api.GetSpeakState.side_effect = state
     monkeypatch.setattr(zdsr.time, "sleep", lambda _seconds: None)
     assert instance._speak_text(instance._generation, "first sentence")
-    assert observed == [4, 3, 3, 4, 4]
+    assert observed == [4, 4, 4, 3, 3, 4]
     api.Speak.assert_called_once_with("first sentence", False)
+
+
+def test_zdsr_does_not_emit_completion_bookmark_before_audible_speech(
+    engine, monkeypatch
+):
+    instance, api = engine
+    bookmarks = []
+    instance.bind(
+        EngineEvent.bookmark_reached,
+        lambda _sender, value: bookmarks.append(value),
+    )
+    states = iter([4, 4, 4, 3, 3, 4])
+
+    def state():
+        value = next(states)
+        if value != zdsr.ZDSR_STATE_IDLE or bookmarks:
+            assert bookmarks == ["start"]
+        return value
+
+    api.GetSpeakState.side_effect = state
+    monkeypatch.setattr(zdsr.time, "sleep", lambda _seconds: None)
+    instance._run_actions(
+        instance._generation,
+        [("bookmark", "start"), ("text", "content"), ("bookmark", "end")],
+    )
+
+    assert bookmarks == ["start", "end"]
 
 
 def test_zdsr_paragraph_handoff_does_not_clear_api_queue(engine, monkeypatch):
@@ -193,7 +233,7 @@ def test_zdsr_pause_during_state_query_does_not_complete_text(engine):
     assert instance.state is SynthState.paused
 
 
-def test_zdsr_stale_idle_never_discards_queued_sentences(engine, monkeypatch):
+def test_zdsr_delayed_start_never_advances_bookmarks_early(engine, monkeypatch):
     instance, api = engine
     # Even an idle report lasting several polls must not cause data loss.
     pending = []
@@ -201,6 +241,7 @@ def test_zdsr_stale_idle_never_discards_queued_sentences(engine, monkeypatch):
         if interrupt:
             pending.clear()
         pending.append(text)
+        api._speech_states[:] = [4, 4, 4, 3, 4]
         return 0
     api.Speak.side_effect = speak
     api.StopSpeak.side_effect = pending.clear
@@ -228,3 +269,30 @@ def test_zdsr_cancelled_worker_cannot_submit_text(engine):
     instance.stop()
     assert not instance._speak_text(generation, "cancelled")
     api.Speak.assert_not_called()
+
+def test_zdsr_resume_between_polls_retries_interrupted_sentence(engine, monkeypatch):
+    instance, api = engine
+    instance._set_state(SynthState.busy)
+    interrupted = False
+
+    def speak(_text, _interrupt):
+        api._speech_states[:] = (
+            [4, 4, 4, 3, 4]
+            if api.Speak.call_count == 2
+            else [3, 4]
+        )
+        return 0
+
+    def between_polls(_seconds):
+        nonlocal interrupted
+        if not interrupted:
+            interrupted = True
+            instance.pause()
+            instance.resume()
+
+    api.Speak.side_effect = speak
+    monkeypatch.setattr(zdsr.time, "sleep", between_polls)
+    instance._run_actions(instance._generation, [("text", "current"), ("text", "next")])
+    assert api.Speak.call_args_list == [
+        call("current", False), call("current", False), call("next", False)
+    ]
