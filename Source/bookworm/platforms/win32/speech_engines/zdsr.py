@@ -254,7 +254,10 @@ class ZdsrSpeechEngine(BaseSpeechEngine):
             self._generation += 1
             generation = self._generation
             self._resume_event.set()
-        self._stop_api()
+        # Normal paragraph handoff must not flush the independent channel.
+        # Explicit stop/seek and pause already cancel audio through stop().
+        if self._owns_speech:
+            self._stop_api()
         self._set_state(SynthState.busy)
         threading.Thread(
             target=self._run_actions,
@@ -316,23 +319,38 @@ class ZdsrSpeechEngine(BaseSpeechEngine):
     def _speak_text(self, generation, text):
         deadline = time.monotonic() + 1.5
         while self._is_current(generation):
-            with _api_call_lock:
-                result = self._api.Speak(text, True)
-            if result == ZDSR_SUCCESS:
-                self._owns_speech = True
-                break
+            with self._lock:
+                if not self._is_current(generation) or self.state is SynthState.paused:
+                    return False
+                # Never purge earlier text on a potentially stale idle report.
+                with _api_call_lock:
+                    result = self._api.Speak(text, False)
+                if result == ZDSR_SUCCESS:
+                    self._owns_speech = True
+                    break
             if result != ZDSR_NOT_READY or time.monotonic() >= deadline:
                 raise ZdsrError("Speak", result)
             time.sleep(POLL_INTERVAL_SECONDS)
+        idle_seen = False
         while self._is_current(generation):
-            if self.state is SynthState.paused:
-                return False
-            status = self._get_speak_state()
-            if status == ZDSR_STATE_IDLE:
-                self._owns_speech = False
-                return True
-            if status != ZDSR_STATE_SPEAKING:
-                raise ZdsrError("GetSpeakState", status)
+            with self._lock:
+                if not self._is_current(generation) or self.state is SynthState.paused:
+                    return False
+                status = self._get_speak_state()
+                if not self._is_current(generation) or self.state is SynthState.paused:
+                    return False
+                # Speak is asynchronous: the first query can still report the
+                # preceding idle state. Confirm idle on a subsequent poll before
+                # emitting bookmarks or starting the next paragraph.
+                if status == ZDSR_STATE_IDLE:
+                    if idle_seen:
+                        self._owns_speech = False
+                        return True
+                    idle_seen = True
+                elif status == ZDSR_STATE_SPEAKING:
+                    idle_seen = False
+                else:
+                    raise ZdsrError("GetSpeakState", status)
             time.sleep(POLL_INTERVAL_SECONDS)
         return False
 
@@ -371,15 +389,15 @@ class ZdsrSpeechEngine(BaseSpeechEngine):
             if self._closed or self._state is not SynthState.busy:
                 return
             self._resume_event.clear()
-        self._stop_api()
-        self._set_state(SynthState.paused)
+            self._set_state(SynthState.paused)
+            self._stop_api()
 
     def resume(self):
         with self._lock:
             if self._closed or self._state is not SynthState.paused:
                 return
+            self._set_state(SynthState.busy)
             self._resume_event.set()
-        self._set_state(SynthState.busy)
 
     def bind(self, event, handler):
         if event not in (EngineEvent.bookmark_reached, EngineEvent.state_changed):

@@ -253,8 +253,12 @@ class SapiSpeechEngine(BaseSpeechEngine):
 
     def pause(self):
         if self.state is SynthState.busy:
-            self._pause_switch(True)
             self._set_state(SynthState.paused)
+            try:
+                self._pause_switch(True)
+            except Exception:
+                self._set_state(SynthState.busy)
+                raise
 
     def resume(self):
         if self.state is SynthState.paused:
@@ -297,15 +301,19 @@ class SapiSpeechEngine(BaseSpeechEngine):
         return self.tts.getVoices()
 
     def _pause_switch(self, switch: bool):
-        if self.tts_audio_stream:
-            # Some third-party SAPI voices ignore SPVoice.Pause/Resume. Their
-            # audio stream does respond to ISpAudio.SetState, but its reported
-            # state is not reliable enough to gate the resume operation. Set
-            # the requested state unconditionally so a second hotkey press
-            # always reopens playback.
-            state = SPAudioState.Paused if switch else SPAudioState.Running
-            self.tts_audio_stream.setState(state, 0)
-        elif switch:
+        # Keep SPVoice's synthesis queue and the audio output device in sync.
+        # Some SAPI 5 voices only honour SPVoice.Pause/Resume, while others
+        # continue producing audible output unless ISpAudio.SetState is also
+        # used.  Calling both covers both families without changing the public
+        # pause/resume state machine.
+        if switch:
             self.tts.Pause()
-        else:
+        if self.tts_audio_stream:
+            # The reported audio state is not reliable enough to gate resume.
+            # Set the requested state unconditionally so a second hotkey press
+            # always reopens playback. Use the declared COM method name so the
+            # frozen build does not depend on comtypes' case-insensitive alias.
+            state = SPAudioState.Paused if switch else SPAudioState.Running
+            self.tts_audio_stream.SetState(state, 0)
+        if not switch:
             self.tts.Resume()

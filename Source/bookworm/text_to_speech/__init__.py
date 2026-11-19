@@ -273,7 +273,10 @@ class TextToSpeechService(BookwormService):
         utterance = SpeechUtterance()
         utterance.add_bookmark(self.encode_bookmark({"t": UT_BEGIN}))
         yield utterance
-        utterance.add_text("\n.")
+        # ZDSR reports bookmarks through our action queue and needs no audible
+        # trailing sentinel. Sending this standalone dot makes it say "point".
+        if getattr(getattr(self, "engine", None), "name", None) != "zdsr":
+            utterance.add_text("\n.")
         utterance.add_bookmark(self.encode_bookmark({"t": UT_END}))
         self.utterance_queue.appendleft(utterance)
 
