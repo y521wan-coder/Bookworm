@@ -1,5 +1,5 @@
 飞船阅读 2026.2.6 开发交接说明
-更新：2026-11-18（Asia/Shanghai）
+更新：2026-11-19（Asia/Shanghai）
 
 ============================================================
 一、当前状态
@@ -17,27 +17,28 @@
 
 最新安装包（D 盘唯一安装包）：
   D:\飞船阅读-2026.2.6-x64-setup.exe
-  大小：117,094,659 字节
-  SHA-256：57DE5362652180815244E7A774E0BDCD1D03368EA40526D38857800E7691FF97
+  大小：117,081,404 字节
+  SHA-256：637D35E2E2196195A8196B94F46F2F3CA3A64BC37EBF60B60B7A7CBFE9B71E6F
+  ProductName：飞船阅读
+  FileDescription：飞船阅读安装程序
+  FileVersion：2026.2.6
+
+新包直接生成于 D:\ 根目录，已通过 7-Zip 完整性检查（3678 个文件）。包内 Bookworm.exe 的 SHA-256 与冻结内核及本机当前安装版内核相同。用户打算自行发给朋友使用。
+
+本机当前安装版内核：
+  C:\Program Files\Bookworm\Bookworm.exe
   ProductName：飞船阅读
   FileVersion：2026.2.6
+  SHA-256：0D196987C51D65566F4604F51450E299BADE519A6D2E6277B7CE926DC66DD710
 
-重要：用户要求自己手动覆盖安装测试。新包已生成和验证，但本机尚未安装该新包。
-
-本机当前安装的仍是上一轮内核：
-  C:\Program Files\Bookworm\Bookworm.exe
-  ProductName：晨钟暮鼓阅读
-  FileVersion：2026.2.6
-  SHA-256：6A6B4C115AFA772BC949B75BE412F88C6BF6A8DB7F35D1918C4DD309FB3E3E18
-
-不得误记为“飞船阅读”新包已完成本机安装验证。
+本机采用单文件覆盖替换内核。用户此前已确认 SAPI 5 暂停/继续、争渡不再多读“点”以及争渡连续朗读不再无规律跳字均已修复。本轮又补上暂停边界、旧流事件和组合键误翻页等竞态修复；自动化测试已通过，但中断后没有留下用户对这些新增边界场景的人工确认。最新安装器未在本机运行，勿把单文件内核覆盖当成完整安装流程实测。
 
 ============================================================
 二、已完成的定制功能
 ============================================================
 
 1. 大型 TXT
-   核心：Source\bookworm\document\formats\plain_text.py、reader.py、gui\book_viewer\__init__.py、structured_text\text_info.py。
+   核心：Source\bookworm\document\formats\plain_text.py、reader.py、gui\book_viewer\__init__.py、structured_text\primitives.py（TextInfo）。
    参数：PAGINATION_THRESHOLD_CHARS = 250_000，TARGET_PAGE_CHARS = 50_000。
    大 TXT 分成逻辑页，避免整本进入单个 RichEdit。
    必须保留旧内容哈希、旧阅读位置和 normalize_stored_position() 迁移。
@@ -53,19 +54,31 @@
    核心：Source\bookworm\text_to_speech\__init__.py、tts_gui.py、platforms\win32\speech_engines\sapi\_sapi.py。
    注册：wx.MOD_CONTROL | wx.MOD_ALT | wx.MOD_WIN | 0x4000，key = wx.WXK_SPACE。
    0x4000 是 MOD_NOREPEAT。热键仍调用原 pause_or_resume()。
-   SAPI 暂停：tts_audio_stream.setState(SPAudioState.Paused, 0)。
-   SAPI 恢复：tts_audio_stream.setState(SPAudioState.Running, 0)。
-   恢复必须无条件设置 Running，不得用不可靠的 GetStatus 阻止。
-   StartStream/EndStream 不得覆盖 paused。
+   SAPI 暂停：先标记 paused，再调用 SPVoice.Pause()，有 ISpAudio 时还调用 SetState(SPAudioState.Paused, 0)。调用失败时回滚为 busy。
+   SAPI 恢复：有 ISpAudio 时先调用 SetState(SPAudioState.Running, 0)，再调用 SPVoice.Resume()。
+   使用 COM 声明中的 SetState 大小写。恢复时不得用不可靠的 GetStatus 阻止设置 Running。
+   StartStream/EndStream 不得覆盖 paused；无 ISpAudio 时保留 SPVoice 暂停/继续。
+   暂停时阅读服务会冻结书签回调，恢复后才按顺序处理，防止在语音引擎短暂 ready 或窗口失去焦点时提前翻页、送入下一段或移动阅读位置。
+   阅读服务的 is_reading 在暂停期间仍为真；光标/选区到页末时由 TTS 独占翻页，普通阅读器的连续阅读逻辑不得抢先翻页。
+   SAPI 用 Speak() 返回的流编号标记当前流；旧流的 StartStream、Bookmark、EndStream 必须全部忽略，避免旧 EndStream 把当前段落误判为完成。
+   主窗口的 Space、Enter、Backspace 仅在无修饰键时执行翻页，防止 Ctrl+Win+Alt+Space 的 KeyUp 被正文控件再次当成空格翻页。
    窗口已销毁时，热键清理 RuntimeError 不得传播。
    Windows 本机注册探测已通过：wx.WXK_SPACE = 32。
 
 4. 争渡读屏语音库
-   核心：Source\bookworm\platforms\win32\speech_engines\zdsr.py、__init__.py、scripts\builder\Bookworm.spec。
+   核心：Source\bookworm\platforms\win32\speech_engines\zdsr.py、同目录 __init__.py、bookworm\text_to_speech\__init__.py、scripts\builder\Bookworm.spec。
    使用命名独立通道：InitTTS(1, "飞船阅读", FALSE)。
    通道名必须严格为“飞船阅读”，不得添加后缀。
    独立通道可短暂返回 9，等待上限为 3.0 秒；本机已探测到最终状态 4。
    争渡用户可用 ZDSR+F4 切换到“飞船阅读”通道。
+   多读“点”的来源：TextToSpeechService.queue_speech_utterance() 原先会在每个朗读单元的 UT_END 书签前附加 "\n."。阅读服务到争渡 API 的测试捕获了这个独立英文点。
+   最终修复：仅争渡跳过该附加文本。争渡通过动作队列报告书签，不需要这个点；其它语音引擎仍保留原有行为。
+   保留默认逐句送读、原文标点和已有停顿设置。曾试过改逗号、去句号加固定 250 毫秒停顿、原文整段送读及零停顿时合并片段，均已撤回。用户最终要求只保留“去掉附加点”。
+   跳读根因：争渡 Speak 是异步接口，调用成功后 GetSpeakState 可能先短暂返回 4（空闲），随后才返回 3（正在朗读）。旧适配器把第一次空闲当成当前句已完成，并用 Speak(text, TRUE) 清空队列、打断上一句，造成随机跳过几十到上百字；正常段落交接还会额外调用 StopSpeak，加剧丢句。
+   跳读修复：正常送读改用 Speak(text, FALSE) 顺序排队；Speak 成功后必须先观察到真实的状态 3（正在朗读），之后回到 4（空闲）才能判定完成，启动等待上限为 3.0 秒；正常段落交接不再清空通道；暂停、停止、跳转仍能取消当前朗读，旧工作线程不能在取消后继续送读。
+   若暂停/继续完整发生在两次状态轮询之间，StopSpeak 已取消的当前句必须重新送入，不能把它当成已完成并跳到下一句。
+   本机真实争渡 DLL 已复现“空闲→正在朗读→空闲”时序；修复后的连续送读测试每句均等待真实完成。用户已确认实际读书不再跳读。
+   回归测试覆盖实际传给争渡 Speak 的分句文本、停顿、附加点移除、启动状态滞后、跨段不丢句、暂停竞态和取消后的旧线程，位置：Source\tests\test_zdsr_engine.py。
 
 5. 首选项与“隐藏功能”
    “隐藏功能”页必须使用现有 settings 图标，不得恢复不存在的 hidden_features 图标名。
@@ -78,35 +91,49 @@
    已删除 bookworm\otau.py、bookworm\updater.py、platforms\win32\updater.py、platforms\linux\updater.py 和 tests\test_otau.py。
    不得恢复服务、配置、菜单、网址或冻结模块，也不得放入“隐藏功能”。
 
+7. 中文安装器
+   核心：Source\scripts\bookworm.nsi、Source\scripts\license-zh_CN.txt。
+   安装器固定使用简体中文，不再显示多语言选择框；品牌文字和 FileDescription 均显示“飞船阅读”。
+   许可页显示 GPL-2.0-or-later 中文说明，同时把完整英文许可证安装为安装目录的 LICENSE.txt。
+   开始菜单项为“飞船阅读”“飞船阅读 用户指南”“卸载飞船阅读”；用户指南指向 _internal\resources\userguide\zh_CN\bookworm.html。
+   桌面快捷方式说明为“无障碍文档阅读器”，完成页不再显示上游网站链接。
+
 ============================================================
 三、当前验证结果
 ============================================================
 
-定向测试：27 passed。
-完整测试：237 passed, 8 warnings。
-warnings 是现有第三方库弃用提示，不是测试失败。
+本轮语音与导航定向测试：70 passed, 6 warnings（test_navigation.py、test_sapi_pause_resume.py、test_text_to_speech.py、test_zdsr_engine.py）。
+最终完整测试：256 passed, 8 warnings（Source\tests 全部测试）。
+warnings 来自现有第三方库。
 
 冻结 EXE：
   D:\Bookworm_Development_Project\Source\scripts\builder\dist\x64\Bookworm\Bookworm.exe
   ProductName：飞船阅读
   FileVersion：2026.2.6
-  SHA-256：128E94B01A05BC78480AECD80A725415CF3ACCB0D1C8CC8F43FCD9436285A1DE
+  SHA-256：0D196987C51D65566F4604F51450E299BADE519A6D2E6277B7CE926DC66DD710
 
-《凡人修仙传》冻结产物 benchmark：
+《凡人修仙传》早期冻结产物 benchmark（历史参考，本轮未重跑）：
   冷启动 9.37 秒，ExitCode = 0。
   热启动 3.02 秒，ExitCode = 0。
 
-PYZ-00.toc 包含 zdsr，不包含 otau/updater 四个已删除模块。
+冻结 EXE 的生成时间晚于本轮全部应用源码修改；冻结 EXE、安装包内 Bookworm.exe 与本机当前 Bookworm.exe 三者大小及 SHA-256 完全一致。PYZ 包含 zdsr，不包含 otau/updater 四个已删除模块。
+
+安装器验证：
+  7-Zip 完整性检查通过，3678 个文件，Everything is Ok。
+  包内包含 LICENSE.txt 和 _internal\resources\userguide\zh_CN\bookworm.html。
+  最新安装器没有在本机执行；全中文安装流程、旧版静默卸载、快捷方式和卸载入口仍需人工验收。
 
 ============================================================
 四、用户安装后必须人工验收
 ============================================================
 
 1. 标题、ProductName、快捷方式和安装器是否显示“飞船阅读”。
-2. Ctrl+Win+Alt+Space 第一次是否真正暂停声音，第二次是否继续；连续做 3 至 5 轮。
+2. Ctrl+Win+Alt+Space 第一次是否真正暂停声音，第二次是否继续；连续做 3 至 5 轮，并在句间、段间、页末分别测试。暂停后不得自动翻页、移动阅读位置或提前送入下一段，恢复后应从原处继续。
 3. 选择“争渡读屏语音库”后，ZDSR+F4 是否能切换到“飞船阅读”通道。
-4. 争渡通道是否能稳定朗读、暂停、继续和停止。
-5. Tab 百分比流程、“隐藏功能”页、更新功能彻底移除和大 TXT 性能是否正常。
+4. 争渡通道是否能稳定朗读、暂停、继续和停止。用含多句及多个段落的长文本确认不多读“点”、不跳字，并确认默认逐句朗读节奏正常。
+5. 主窗口位于前台时按 Ctrl+Win+Alt+Space，不得因末尾 Space 的 KeyUp 额外翻到下一页；单独 Space/Enter/Backspace 的原翻页功能仍应正常。
+6. 全中文安装器的许可页、目录页、完成页、桌面快捷方式、中文用户指南快捷方式、卸载快捷方式及旧版升级卸载是否正常。
+7. Tab 百分比流程、“隐藏功能”页、更新功能彻底移除和大 TXT 性能是否正常。
 
 自动化安全规则禁止自动发送包含 Windows 键的组合键。
 不得把屏幕阅读器提示当成真实音频已暂停的证据。
@@ -136,6 +163,10 @@ PYZ-00.toc 包含 zdsr，不包含 otau/updater 四个已删除模块。
 
 生成安装包：
   .\.venv\Scripts\python.exe -m invoke make-installer
+  上述命令默认输出到 Source\scripts。若按用户要求直接输出 D:\ 根目录，可用 tasks._add_envars(invoke.Context()) 初始化原构建环境，然后在 Source\scripts 中执行：
+  makensis /V2 bookworm.nsi '/XOutFile "D:\飞船阅读-2026.2.6-x64-setup.exe"'
+  /XOutFile 必须放在 bookworm.nsi 参数之后。已有同名包时，先构建并验证新包，再替换旧包。
+  打包后检查版本、SHA-256、7-Zip 完整性，并核对包内 Bookworm.exe 与已通过测试的冻结内核哈希一致。
 
 真实大书：
   D:\Bookworm_Development_Project\Test_Data\176《凡人修仙传》（校对版全本+番外）作者：忘语.txt
@@ -150,7 +181,7 @@ copy-deps 的旧 Visual Studio 14.0 DLL 路径警告是已知问题；关键 MSV
 2. 当前用户要求最终包放在 D:\ 根目录。
 3. 新包完成构建、测试、哈希和版本验证后才能删除旧包。
 4. 删除前必须精确核对路径；不得删除源码、日志、配置、语音库、原始源码或测试书。
-5. 上一轮“晨钟暮鼓阅读”安装包已永久删除，未保留备份。
+5. 最新安装包已在 D:\ 根目录构建并验证，旧包已替换；D 盘根目录只保留一个安装包。
 
 ============================================================
 七、GitHub 公开源码仓库
@@ -160,6 +191,9 @@ copy-deps 的旧 Visual Studio 14.0 DLL 路径警告是已知问题；关键 MSV
 分支：main
 origin：git@github.com:y521wan-coder/Bookworm.git
 upstream：https://github.com/blindpandas/bookworm.git
+
+本轮源码与测试提交为 f9cc2a8（Harden paused reading and localize installer），已推送至 origin/main。它包含暂停期间冻结书签、TTS 独占页末翻页、组合热键不误翻页、SAPI 旧流隔离、争渡必须等待真实开始及暂停竞态重试，以及全中文安装器。本地与 origin/main 在交接说明提交后应保持同步；用 git status --short --branch 和 git log -1 复核当前最终 HEAD。
+scripts\zdsr_punctuation_probe.py 是四组听感对照的临时诊断脚本，未跟踪，不是发布内容。归档根目录还有用户的未跟踪电子书，保留原文件，不纳入提交或发布。下次提交前先检查 git status，按需要显式暂存源码和测试。
 
 必须使用本项目专用 SSH 配置，不得输出、复制或上传私钥内容。
 不得上传 Build_Tools、Config、Latest_Installer、Logs、Original_Source、Test_Data、Voice_Library、private、.venv、build、dist、安装包、日志、数据库或用户配置。
@@ -174,7 +208,7 @@ upstream：https://github.com/blindpandas/bookworm.git
 3. 不要把 wx.CallLater 延迟改为 0。
 4. 不要让后台进度覆盖 _pending_slider_percentage。
 5. 全局热键必须保持 Ctrl+Win+Alt+Space。
-6. 不要改回只调用 SPVoice.Pause/Resume，不要用 GetStatus 阻止 SetState(Running)。
+6. 保留 SPVoice.Pause/Resume 与可用时的 ISpAudio.SetState 组合，不要用 GetStatus 阻止 SetState(Running)。
 7. 不要让 StartStream/EndStream 覆盖 paused。
 8. 争渡通道名必须保持“飞船阅读”。
 9. 不要恢复 otau/updater 或任何更新入口。
@@ -182,9 +216,16 @@ upstream：https://github.com/blindpandas/bookworm.git
 11. 不要使用 hidden_features 图标名。
 12. 不要删除旧内容哈希和旧阅读位置迁移逻辑。
 13. 不要保留旧安装包或重复副本。
+14. 争渡保留默认逐句朗读，只去掉程序追加的 "\n."。不要恢复句号过滤、固定 250 毫秒停顿或整段送读。
+15. 争渡正常送读必须使用 Speak(text, FALSE)，不得在正常逐句或跨段交接时清空队列。Speak 后必须先看到真实正在朗读，再看到空闲才能判定完成；同时必须保留暂停、停止、跳转的取消能力和代际检查。
+16. 暂停期间不得处理 TTS 书签、自动翻页、移动位置或送入下一段；恢复时才按原顺序处理积压书签。
+17. TTS 正在朗读或暂停时，正文光标到页末不得触发普通连续阅读的重复翻页。
+18. Space、Enter、Backspace 只有无修饰键时才可作为正文翻页键；不得让全局热键的组合键 KeyUp 触发翻页。
+19. SAPI 必须按当前流编号过滤 StartStream、Bookmark、EndStream；旧流事件不得改变当前状态或恢复旧书签。
+20. 中文安装器必须保留完整 GPL 英文许可证、中文用户指南路径和简体中文固定界面，不得重新引入上游网站完成页链接。
 
 ============================================================
 九、新会话开场指令
 ============================================================
 
-请先完整阅读 D:\Bookworm_Development_Project\交接说明.txt，再修改 D:\Bookworm_Development_Project\Source。当前源码和 D:\飞船阅读-2026.2.6-x64-setup.exe 版本为 2026.2.6，显示名为“飞船阅读”，争渡命名独立通道也严格叫“飞船阅读”，全局暂停/继续热键是 Ctrl+Win+Alt+Space。用户尚未安装新包，C:\Program Files\Bookworm 当前仍是上一轮“晨钟暮鼓阅读”内核。自动更新、手动检测更新和更新日志必须彻底不存在。不要上传安装包、私钥、配置、日志或用户数据。
+请先完整阅读 D:\Bookworm_Development_Project\交接说明.txt，再按新需求修改 D:\Bookworm_Development_Project\Source。当前版本为 2026.2.6，显示名与争渡独立通道名均为“飞船阅读”，全局暂停/继续热键为 Ctrl+Win+Alt+Space。SAPI 暂停/继续、争渡多读“点”和争渡无规律跳字的基础修复已通过用户测试；本轮又修复暂停期间书签/页末提前推进、组合热键误翻页、SAPI 旧流事件及争渡暂停竞态，自动化测试已通过但仍需用户人工复验。争渡保留默认逐句朗读，仅跳过程序额外添加的 "\n."；正常送读使用 Speak(text, FALSE) 排队，必须看到真实开始后再以空闲判定完成，暂停、停止和跳转仍须可靠取消。本机内核、冻结内核与 D:\飞船阅读-2026.2.6-x64-setup.exe 包内内核一致，SHA-256 为 0D196987C51D65566F4604F51450E299BADE519A6D2E6277B7CE926DC66DD710；最新安装器未在本机运行。完整测试为 256 passed；本轮源码提交 f9cc2a8 已推送至 origin/main。安装器固定简体中文并包含中文许可说明、完整 GPL 英文原文和中文用户指南。自动更新、手动检测更新和更新日志必须彻底不存在。不要上传安装包、私钥、配置、日志或用户数据。
