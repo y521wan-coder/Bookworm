@@ -6,7 +6,7 @@ from functools import partial
 import wx
 
 from bookworm import app, config, speech
-from bookworm.concurrency import CancellationToken, threaded_worker
+from bookworm.concurrency import CancellationToken
 from bookworm.document import (
     ArchiveContainsMultipleDocuments,
     ArchiveContainsNoDocumentsError,
@@ -294,6 +294,7 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
         self._no_open_book_status = _("Press (Ctrl + O) to open a document")
         self._has_text_zoom = False
         self._progress_navigation_timer = None
+        self._caret_position_save_timer = None
         self._pending_slider_percentage = None
         self.__latest_structured_navigation_position = None
         self.__skip_next_image_earcon_position = None
@@ -604,7 +605,16 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
             return
         clean_position = self.control_to_view_position(event.Position)
         self._process_image_earcon_for_position(clean_position)
-        threaded_worker.submit(self._after_caret_moved)
+        if self._caret_position_save_timer is not None:
+            self._caret_position_save_timer.Stop()
+        document_info = self.reader.stored_document_info
+        self._caret_position_save_timer = wx.CallLater(
+            250,
+            self._after_caret_moved,
+            document_info,
+            self.reader.current_page,
+            self.reader.view_to_storage_position(clean_position),
+        )
         if (
             config.conf["general"]["use_continuous_reading"]
             and event.Position == self.contentTextCtrl.GetLastPosition()
@@ -622,10 +632,17 @@ class BookViewerWindow(wx.Frame, MenubarProvider, StateProvider):
                 self._last_page_turn_time = time.monotonic()
         wx.CallAfter(keep_awake)
 
-    def _after_caret_moved(self):
+    def _after_caret_moved(self, document_info, page, position):
+        self._caret_position_save_timer = None
+        if (
+            not self.reader.ready
+            or document_info is None
+            or self.reader.stored_document_info is not document_info
+        ):
+            return
         try:
-            self.reader.save_current_position()
-        except:
+            document_info.save_position(page, position)
+        except Exception:
             log.exception("Failed to save current position", exc_info=True)
         if self.reader.document.is_single_page_document():
             self.update_reading_progress()

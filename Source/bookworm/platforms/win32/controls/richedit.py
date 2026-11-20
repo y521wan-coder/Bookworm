@@ -1,7 +1,4 @@
 import ctypes
-import queue
-import threading
-import time
 from pathlib import Path
 
 import win32con
@@ -83,44 +80,45 @@ class WNDProcPanel(WndProcHookMixin, ContentViewCtrlPanel):
             "Bkw_SetAllTextPointSize",
             (ctypes.c_ssize_t, ctypes.c_int),
         )
-        self._event_queue = queue.PriorityQueue()
+        self._last_caret_position = None
         self.hookWndProc()
 
     def init_caret_tracking(self):
         self._init_caret_tracking(self.text_ctrl.GetHandle())
         self.addMsgHandler(win32con.WM_NOTIFY, "WM_NOTIFY", self.onWM_NOTIFY)
-        t = threading.Thread(
-            target=self._tracking_thread,
-            args=(
-                self.text_ctrl,
-                self._event_queue,
-            ),
-            daemon=True,
-        )
-        t.start()
-
-    @staticmethod
-    def _tracking_thread(text_ctrl, event_queue):
-        CaretMoveEvent = text_ctrl.CaretMoveEvent
-        parent = text_ctrl.GetTopLevelParent()
-        text_ctrl_id = text_ctrl.GetId()
-        last_pos = None
-        while True:
-            new_pos = event_queue.get()
-            # Drop the earliest event since it rarely causes SegFault
-            if last_pos is None:
-                time.sleep(1)
-                last_pos = -1
-                continue
-            if new_pos == last_pos:
-                continue
-            wx.PostEvent(parent, CaretMoveEvent(id=text_ctrl_id, Position=new_pos))
-            last_pos = new_pos
 
     def onWM_NOTIFY(self, wParam, lParam):
-        if (sel_loc := self._get_new_sel_pos(lParam)) >= 0:
-            self._event_queue.put_nowait(sel_loc)
+        sel_loc = self._get_new_sel_pos(lParam)
+        if sel_loc < 0 or sel_loc == self._last_caret_position:
+            return True
+        # The first notification can arrive while RichEdit is still being
+        # initialized. Preserve the existing behavior of ignoring it.
+        if self._last_caret_position is None:
+            self._last_caret_position = sel_loc
+            return True
+        self._last_caret_position = sel_loc
+        # Defer delivery until after the native window procedure returns. This
+        # avoids a permanent worker thread retaining and posting to destroyed
+        # wx objects while keeping caret events ordered on the GUI thread.
+        wx.CallAfter(self._post_caret_event, sel_loc)
         return True
+
+    def _post_caret_event(self, position):
+        try:
+            if not self or self.IsBeingDeleted():
+                return
+            parent = self.text_ctrl.GetTopLevelParent()
+            if not parent or parent.IsBeingDeleted():
+                return
+            wx.PostEvent(
+                parent,
+                self.text_ctrl.CaretMoveEvent(
+                    id=self.text_ctrl.GetId(), Position=position
+                ),
+            )
+        except RuntimeError:
+            # wx can delete the native controls before a queued callback runs.
+            return
 
     def _call_text_font_formatter(self, formatter, font: wx.Font) -> bool:
         if formatter is None or not font.IsOk():

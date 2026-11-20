@@ -21,15 +21,21 @@ logger = logging.getLogger("bookworm")
 def configure_logger(log_file_suffix="", level: int = logging.DEBUG):
     suffix = log_file_suffix if not log_file_suffix else "." + log_file_suffix
     app_handler = RotatingFileHandler(
-        paths.logs_path(f"{APP_LOG_FILE}{suffix}.log"), mode="w"
+        paths.logs_path(f"{APP_LOG_FILE}{suffix}.log"),
+        mode="a",
+        maxBytes=2 * 1024 * 1024,
+        backupCount=3,
     )
     app_handler.setFormatter(formatter)
     app_handler.setLevel(logging.DEBUG)
     app_handler.addFilter(BOOKWORM_FILTER)
     logger.addHandler(app_handler)
 
-    error_handler = logging.FileHandler(
-        paths.logs_path(f"{ERROR_LOG_FILE}{suffix}.log"), mode="w"
+    error_handler = RotatingFileHandler(
+        paths.logs_path(f"{ERROR_LOG_FILE}{suffix}.log"),
+        mode="a",
+        maxBytes=1024 * 1024,
+        backupCount=3,
     )
     error_handler.setFormatter(formatter)
     error_handler.setLevel(logging.ERROR)

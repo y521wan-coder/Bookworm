@@ -490,15 +490,71 @@ def test_caret_at_page_end_only_turns_page_for_independent_reader(monkeypatch, t
     from bookworm.gui import book_viewer
 
     view = Mock()
+    view._caret_position_save_timer = None
     view.reader.ready = True
+    view.reader.current_page = 2
+    view.reader.stored_document_info = Mock()
+    view.control_to_view_position.return_value = 50
+    view.reader.view_to_storage_position.return_value = 50
     view.contentTextCtrl.GetLastPosition.return_value = 50
     view._last_page_turn_time = 0
     app = Mock()
     app.service_handler.get_service.return_value.is_reading = tts_reading
     monkeypatch.setattr(book_viewer.wx, "GetApp", lambda: app)
     monkeypatch.setattr(book_viewer.wx, "CallAfter", Mock())
-    monkeypatch.setattr(book_viewer.threaded_worker, "submit", Mock())
+    monkeypatch.setattr(book_viewer.wx, "CallLater", Mock(return_value=Mock()))
     monkeypatch.setattr(book_viewer.config, "conf", {"general": {"use_continuous_reading": True}})
     monkeypatch.setattr(book_viewer.should_auto_navigate_to_next_page, "send", lambda _: [])
     book_viewer.BookViewerWindow.onCaretMoved(view, Mock(Position=50))
     assert view.reader.go_to_next.call_count == int(not tts_reading)
+
+
+def test_caret_position_save_ignores_a_replaced_document():
+    from bookworm.gui import book_viewer
+
+    previous_document_info = Mock()
+    view = Mock()
+    view._caret_position_save_timer = Mock()
+    view.reader.ready = True
+    view.reader.stored_document_info = Mock()
+
+    book_viewer.BookViewerWindow._after_caret_moved(
+        view, previous_document_info, page=4, position=123
+    )
+
+    previous_document_info.save_position.assert_not_called()
+    assert view._caret_position_save_timer is None
+
+
+def test_caret_position_save_uses_captured_position_on_gui_callback():
+    from bookworm.gui import book_viewer
+
+    document_info = Mock()
+    view = Mock()
+    view._caret_position_save_timer = Mock()
+    view.reader.ready = True
+    view.reader.stored_document_info = document_info
+    view.reader.document.is_single_page_document.return_value = True
+
+    book_viewer.BookViewerWindow._after_caret_moved(
+        view, document_info, page=4, position=123
+    )
+
+    document_info.save_position.assert_called_once_with(4, 123)
+    view.update_reading_progress.assert_called_once_with()
+    assert view._caret_position_save_timer is None
+
+
+def test_native_caret_notifications_are_deferred_without_a_worker(monkeypatch):
+    from bookworm.platforms.win32.controls import richedit
+
+    panel = Mock()
+    panel._last_caret_position = None
+    panel._get_new_sel_pos.side_effect = [10, 20, 20]
+    call_after = Mock()
+    monkeypatch.setattr(richedit.wx, "CallAfter", call_after)
+
+    for _ in range(3):
+        richedit.WNDProcPanel.onWM_NOTIFY(panel, 0, 0)
+
+    call_after.assert_called_once_with(panel._post_caret_event, 20)
